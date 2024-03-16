@@ -1,0 +1,252 @@
+import numpy as np
+import pandas as pd
+import torch
+
+
+from datetime import datetime
+import zipfile
+import os
+import random
+import joblib
+import calendar
+
+import geopandas as geopd
+import xarray as xr
+import time
+import math
+from multiprocessing import Process
+import yaml
+
+import sys
+sys.path.append('src/Competition_Functions') 
+from All_Functions import generate_daily_flow, process_forecast_date
+
+from data_processing import request_seasonal, request_era5, clip_basins, clip_seasonal, rodeo_daily_total, rodeo_daily_av, \
+create_csv_hourly, create_csv_interval, create_csv_seasonal, era5_process, seasonal_process, interp_nino, concat_ninos, \
+build_forecast_days, usgs_data, process_naturalized
+
+sys.path.append('src/Pipeline_Functions')
+from Folder_Work import filter_rows_by_year, csv_dictionary, add_day_of_year_column
+
+
+def predict(
+    site_id: str,
+    issue_date: str,
+    assets: dict[Hashable, Any],
+    src_dir: Path,
+    data_dir: Path,
+    preprocessed_dir: Path,
+) -> tuple[float, float, float]:
+    """A function that generates a forecast for a single site on a single issue
+    date. This function will be called for each site and each issue date in the
+    test set.
+
+    Args:
+        site_id (str): the ID of the site being forecasted.
+        issue_date (str): the issue date of the site being forecasted in
+            'YYYY-MM-DD' format.
+        assets (dict[Hashable, Any]): a dictionary of any assets that you may
+            have loaded in the 'preprocess' function. See next section.
+        src_dir (Path): path to the directory that your submission ZIP archive
+            contents are unzipped to.
+        data_dir (Path): path to the mounted data drive.
+        preprocessed_dir (Path): path to a directory where you can save any
+            intermediate outputs for later use.
+    Returns:
+        tuple[float, float, float]: forecasted values for the seasonal water
+            supply. The three values should be (0.10 quantile, 0.50 quantile,
+            0.90 quantile).
+    """
+
+    # Load Models
+    issue_date = pd.to_datetime(issue_date)
+    device = torch.device('cpu')
+
+    # Load Models
+    try:
+
+        area = pd.read_csv('/data/gbmc/Functions/areas.csv')
+        area['area']=(area['area']-area['area'].mean())/area['area'].std()
+
+        Hydra_Body = torch.load(src_dir + '/Final_Models/General_Body.pth')
+        Hydra_Body.to(device)
+        general_head_path = torch.load(src_dir + '/Final_Models/General_Head.pth')
+        site_specific_head_path = src_dir + f'/Final_Models/{site_id}_Head.pth'
+        
+        # Check if the site-specific model file exists
+        if os.path.exists(site_specific_head_path):
+            # Load the site-specific model
+            Basin_Head = torch.load(site_specific_head_path)
+            Basin_Head.to(device)
+        else:
+            # Load the general model if the site-specific file doesn't exist
+            General_Head = torch.load(general_head_path)
+            General_Head.to(device)
+
+        # Load in data
+        era5_folder = preprocessed_dir + '/pro_era5'
+        flow_folder = preprocessed_dir + '/monthly_naturalized_flow'
+
+        # Tell the model where to run, may be best to just stick to CPU
+        # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        selected_years = selected_years = [issue_date.year]
+        # csv_dictionary takes in a list of the relevant years to extract, outputs a dictionary of dataframes, one for each year
+        era5 = csv_dictionary(era5_folder, [site_id], years=selected_years)
+        era5 = add_day_of_year_column(era5)
+        era5_basin = era5[f'{site_id}_{issue_date.year}']
+
+        flow = csv_dictionary(flow_folder, [site_id])
+        flow = filter_rows_by_year(flow, 1998)
+        # Now, result_dataframes contains the DataFrames for each basin and year (if specified).
+        daily_flow = {}
+        # Iterate through the dictionary and apply generate_daily_flow to each DataFrame
+        for key, df in flow.items():
+            daily_flow[key] = generate_daily_flow(df, persistence_factor=0.4)
+            
+        climatology_file_path = preprocessed_dir + '/climate_indices.csv'
+        climate_indices = pd.read_csv(climatology_file_path)
+        climate_indices['date'] = pd.to_datetime(climate_indices['date'])
+        climate_indices.set_index('date', inplace = True)
+        climate_indices.drop('Unnamed: 0', axis = 1, inplace = True)
+        climate_indices = climate_indices[~climate_indices.index.duplicated(keep='first')]
+
+        USGS_flow_path = f'/data/gbmc/Rodeo_Submission/Rodeo_Data/USGS_streamflows/{site_id}.csv'
+        if os.path.exists(USGS_flow_path):
+            USGS_flow = pd.read_csv(USGS_flow_path)
+    
+            # Replacing monhtly data for normalised USGS when available
+            for key in daily_flow:
+                if key in USGS_flow:
+                    daily_flow_df = daily_flow[key]
+                    usgs_flow_df = USGS_flow[key]
+    
+                    # Iterate over years and months in daily_flow_df
+                    for (year, month), month_data in daily_flow_df.groupby([daily_flow_df.index.year, daily_flow_df.index.month]):
+                        # Extract that months data from USGS
+                        usgs_month_data = usgs_flow_df.loc[(usgs_flow_df.index.year == year) & (usgs_flow_df.index.month == month), '00060_Mean']
+                    
+                        # Exclude days with NaN values
+                        valid_days = usgs_month_data.dropna().index.day
+                    
+                        # Check if the month in USGS_flow has data for each day in daily_flow_df excluding NaNs
+                        if set(month_data.index.day).issubset(set(valid_days)):
+                            # Normalize USGS_flow values for the month excluding NaNs
+                            normalization_factor = month_data['daily_flow'].sum()/ usgs_month_data.loc[usgs_month_data.index.day.isin(valid_days)].sum()
+                            normalized_usgs_month_data = usgs_month_data * normalization_factor
+    
+                            normalized_usgs_month_data.index = normalized_usgs_month_data.index.tz_localize(daily_flow_df.index.tz)
+                        
+                            # Replace entries in daily_flow_df with normalized USGS_flow values
+                            daily_flow_df.loc[(daily_flow_df.index.year == year) & (daily_flow_df.index.month == month), 'daily_flow'] = normalized_usgs_month_data
+
+
+
+        # Normalise this using values also used in training
+        climate_scaler_filename = src_dir + '/Rodeo_Data/climate_normalization_scaler.save'
+        climate_scaler = joblib.load(climate_scaler_filename) 
+        climate_indices = pd.DataFrame(climate_scaler.transform(climate_indices), columns=climate_indices.columns, index=climate_indices.index)
+
+        era5_scaler_filename = src_dir + '/Rodeo_Data/era5_scaler.save'
+        era5_scaler = joblib.load(era5_scaler_filename) 
+        era5 = {key: pd.DataFrame(era5_scaler.transform(df), columns=df.columns, index=df.index) for key, df in era5.items()}
+
+        flow_scaler_filename = src_dir + '/Rodeo_Data/daily_flow_scaler.save'
+        flow_scaler = joblib.load(flow_scaler_filename) 
+        daily_flow = {key: pd.DataFrame(flow_scaler.transform(df), columns=df.columns, index=df.index) for key, df in daily_flow.items()}
+
+
+        start_season_date = pd.to_datetime(forecast_dates['start_day'].iloc[0])
+        end_season_date = pd.to_datetime(forecast_dates['end_day'].iloc[0])
+        start_season_date = start_season_date.replace(year = issue_date.year)
+        end_season_date = end_season_date.replace(year = issue_date.year)
+    
+    
+        era5_basin = era5[f'{site_id}_{issue_date.year}']
+        History_H0 = process_forecast_date(daily_flow[site_id], era5_basin , climate_indices, forecast_datetime)
+        History_H0['day_of_year'] = np.sin(np.pi * History_H0.index.dayofyear / 365)
+        History_H0['day_of_year'] = np.cos(2*np.pi * History_H0.index.dayofyear / 365)
+
+        Flat_H0 = History_H0.values.flatten()
+        # Create the History with no flow data
+
+        No_Flow_History_H0 = History_H0.drop('daily_flow', axis=1)
+        Flat_No_Flow_H0 = No_Flow_History_H0.values.flatten()
+        # Convert to float 32 Tensor, originally it is 64
+        Flat_H0_tensor= torch.tensor(Flat_H0.astype(np.float32)).to(device)
+        Flat_No_Flow_H0_tensor = torch.tensor(Flat_No_Flow_H0.astype(np.float32)).to(device)
+
+        Season_Flow = daily_flow[basin][(daily_flow[basin].index > start_forecast_season_date) & (daily_flow[basin].index <= end_season_date)]['daily_flow']
+        Season_Flow = torch.tensor(Season_Flow.values).to(device)
+        True_Flow = torch.sum(Season_Flow).unsqueeze(0)
+
+        True_Flow = True_Flow + Pre_Flow
+        Pre_Flow = torch.tensor(Pre_Flow).unsqueeze(0).to(device)
+        Area = np.repeat(area[area['site_id'] == basin]['area'].values, 90, axis=0)
+        Area = torch.tensor(Area).to(torch.float32).to(device).unsqueeze(-1)
+
+        History_H0 = torch.tensor(History_H0.values).to(device)
+        History_H0 = torch.cat((History_H0, Area), dim=1
+
+
+        Head_Input = History_H0.to(torch.float32)
+        
+        if 'Basin_Head' in locals():
+            # Basin_Head already exists, use it
+            Basin_Head_Output = Basin_Head(Head_Input, Flat_H0_tensor)
+        else:
+            # Basin_Head doesn't exist, use General_Head
+            Basin_Head_Output = General_Head(Head_Input, Flat_No_Flow_H0_tensor)
+
+
+        # Model Guesses for remaining seasonal cumulative streamflow
+
+        Normal_Vector_Guesses = Basin_Head_Output
+        
+        # Add previous flow from that season
+        Normal_Guesses = Normal_Guesses + Pre_Flow
+        Normal_Guesses = Normal_Guesses.detach().numpy()
+        Normal_Guesses = Normal_Guesses.reshape(-1, 1)
+
+        # Unnormalise, I need to figure out how to do that
+        Guesses = flow_scaler.inverse_transform(Normal_Guesses)
+        Guesses[Guesses < 0] = 0
+        Guesses = tuple(Guesses.reshape(1,-1)[0])
+
+        return Guesses
+    except Exception as e:
+        [default_10, default_50, default_90] = [100,200,300]
+        default_guesses = {
+            'american_river_folsom_lake': {'10': 8.25890931, '50': 16.15167713, '90': 82.37816025},
+            'animas_r_at_durango': {'10': 148.99123825, '50': 279.32773825, '90': 373.75623825},
+            'boise_r_nr_boise': {'10': 775.93723825, '50': 1033.72273825, '90': 1478.30723825},
+            'boysen_reservoir_inflow': {'10': 204.87023825, '50': 438.94273825, '90': 841.13573825},
+            'colville_r_at_kettle_falls': {'10': 57.98373825, '50': 116.11323825, '90': 187.70223825},
+            'detroit_lake_inflow': {'10': 6.86947102, '50': 13.29894623, '90': 30.09213939},
+            'dillon_reservoir_inflow': {'10': 54.85473825, '50': 117.36573825, '90': 142.10273825},
+            'fontenelle_reservoir_inflow': {'10': 286.99973825, '50': 420.65873825, '90': 828.92423825},
+            'green_r_bl_howard_a_hanson_dam': {'10': 153.56873825, '50': 233.51123825, '90': 325.42373825},
+            'hungry_horse_reservoir_inflow': {'10': 1437.45473825, '50': 1808.90123825, '90': 2254.66223825},
+            'libby_reservoir_inflow': {'10': 3174.74673825, '50': 4428.96523825, '90': 5197.77823825},
+            'missouri_r_at_toston': {'10': 851.17273825, '50': 1533.77423825, '90': 1883.71223825},
+            'owyhee_r_bl_owyhee_dam': {'10': 103.47323825, '50': 160.73323825, '90': 499.06673825},
+            'pecos_r_nr_pecos': {'10': 5.90123825, '50': 32.88623825, '90': 46.72873825},
+            'pueblo_reservoir_inflow': {'10': 123.28373825, '50': 201.71073825, '90': 297.95423825},
+            'ruedi_reservoir_inflow': {'10': 58.50173825, '50': 96.82073825, '90': 130.72273825},
+            'skagit_ross_reservoir': {'10': 928.05423825, '50': 1117.87923825, '90': 1351.08423825},
+            'snake_r_nr_heise': {'10': 1936.54673825, '50': 2373.29973825, '90': 3291.39823825},
+            'stehekin_r_at_stehekin': {'10': 492.02873825, '50': 557.46223825, '90': 658.41673825},
+            'sweetwater_r_nr_alcova': {'10': 14.10623825, '50': 30.35373825, '90': 74.62323825},
+            'taylor_park_reservoir_inflow': {'10': 39.50873825, '50': 60.36173825, '90': 85.32823825},
+            'virgin_r_at_virtin': {'10': 14.43423825, '50': 29.26573825, '90': 57.64473825},
+            'weber_r_nr_oakley': {'10': 57.79523825, '50': 83.71873825, '90': 115.95923825},
+            'yampa_r_nr_maybell': {'10': 420.85673825, '50': 802.86223825, '90': 1050.70273825},
+            'san_joaquin_river_millerton_reservoir': {'10': 8.25890931, '50': 16.15167713, '90': 82.37816025},
+            'merced_river_yosemite_at_pohono_bridge': {'10': 6.1894047, '50': 16.65905307, '90': 33.48977683},
+
+        }
+
+        if site_id in default_guesses.keys(): 
+            [default_10, default_50, default_90] = [default_guesses[site_id]['10'], default_guesses[site_id]['50'], default_guesses[site_id]['90']]
+
+        return [default_10, default_50, default_90]
