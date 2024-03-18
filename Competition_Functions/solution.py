@@ -12,11 +12,11 @@ import joblib
 import calendar
 
 import sys
-sys.path.append('/data/gbmc/Rodeo_Submission/Competition_Functions') 
+sys.path.append('/data/Hydra_Work/Competition_Functions') 
 from Processing_Functions import process_forecast_date, process_seasonal_forecasts, fit_fourier_to_h0, Get_History_Statistics
 from Data_Transforming import read_nested_csvs, generate_daily_flow, use_USGS_flow_data, USGS_to_daily_df_yearly
 
-sys.path.append('/data/gbmc/Rodeo_Submission/Pipeline_Functions')
+sys.path.append('/data/Hydra_Work/Pipeline_Functions')
 from Folder_Work import filter_rows_by_year, csv_dictionary, add_day_of_year_column
 
 def predict(
@@ -53,10 +53,10 @@ def predict(
 
 
     print('downloading models')
-    Hydra_Body = torch.load('/data/gbmc/Rodeo_Submission/Models/10_01_Models/General_Body.pth')
+    Hydra_Body = torch.load('/data/Hydra_Work/Models/10_01_Models/General_Body.pth')
     Hydra_Body.to(device)
-    general_head_path = '/data/gbmc/Rodeo_Submission/Models/10_01_Models/General_Head.pth'
-    site_specific_head_path = f'/data/gbmc/Rodeo_Submission/Model/10_01_Models/{site_id}_Head.pth'
+    general_head_path = '/data/Hydra_Work/Models/10_01_Models/General_Head.pth'
+    site_specific_head_path = f'/data/Hydra_Work/Model/10_01_Models/{site_id}_Head.pth'
 
     # Check if the site-specific model file exists
     if os.path.exists(site_specific_head_path):
@@ -69,8 +69,8 @@ def predict(
         General_Head.to(device)
 
     # Load in data
-    era5_folder = '/data/gbmc/Rodeo_Submission/Rodeo_Data/era5'
-    flow_folder = '/data/gbmc/Rodeo_Submission/Rodeo_Data/train_monthly_naturalized_flow'
+    era5_folder = '/data/Hydra_Work/Rodeo_Data/era5'
+    flow_folder = '/data/Hydra_Work/Rodeo_Data/train_monthly_naturalized_flow'
 
     selected_years = [issue_date.year]
     # csv_dictionary takes in a list of the relevant years to extract, outputs a dictionary of dataframes, one for each year
@@ -93,10 +93,10 @@ def predict(
         daily_flow[key] = generate_daily_flow(df, persistence_factor=0.4)
 
 
-    static_indices = pd.read_csv('/data/gbmc/Rodeo_Submission/Rodeo_Data/static_indices.csv', index_col= 'site_id')
+    static_indices = pd.read_csv('/data/Hydra_Work/Rodeo_Data/static_indices.csv', index_col= 'site_id')
 
 
-    climatology_file_path = '/data/gbmc/Rodeo_Submission/Rodeo_Data/climate_indices.csv'
+    climatology_file_path = '/data/Hydra_Work/Rodeo_Data/climate_indices.csv'
     climate_indices = pd.read_csv(climatology_file_path)
     climate_indices['date'] = pd.to_datetime(climate_indices['date'])
     climate_indices.set_index('date', inplace = True)
@@ -104,7 +104,7 @@ def predict(
     climate_indices = climate_indices[~climate_indices.index.duplicated(keep='first')]
 
     seasonal_forecasts = {}
-    root_folder = '/data/gbmc/Rodeo_Submission/Rodeo_Data/seasonal_forecasts'
+    root_folder = '/data/Hydra_Work/Rodeo_Data/seasonal_forecasts'
 
     # Iterate through each subfolder and its CSV files
     for foldername, subfolders, filenames in os.walk(root_folder):
@@ -125,7 +125,7 @@ def predict(
                 key = f"{site}_{year}_{month}"
                 seasonal_forecasts[key] = df
 
-    USGS_flow_path = f'/data/gbmc/Rodeo_Submission/Rodeo_Data/USGS_streamflows/{site_id}.csv'
+    USGS_flow_path = f'/data/Hydra_Work/Rodeo_Data/USGS_streamflows/{site_id}.csv'
     if os.path.exists(USGS_flow_path):
         USGS_flow = pd.read_csv(USGS_flow_path)
 
@@ -154,36 +154,36 @@ def predict(
                         # Replace entries in daily_flow_df with normalized USGS_flow values
                         daily_flow_df.loc[(daily_flow_df.index.year == year) & (daily_flow_df.index.month == month), 'daily_flow'] = normalized_usgs_month_data
         
-    climatological_basin_flow = pd.read_csv(f'/data/gbmc/Rodeo_Submission/Rodeo_Data/climatological_flows/{basin}.csv')
-    Static_variables = pd.read_csv('/data/gbmc/Rodeo_Submission/Rodeo_Data/static_indices.csv', index_col= 'site_id')
+    climatological_basin_flow = pd.read_csv(f'/data/Hydra_Work/Rodeo_Data/climatological_flows/{basin}.csv')
+    Static_variables = pd.read_csv('/data/Hydra_Work/Rodeo_Data/static_indices.csv', index_col= 'site_id')
 
 
     # Normalise this using values also used in training
-    climate_scaler_filename = '/data/gbmc/Rodeo_Submission/Rodeo_Data/scalers/climate_normalization_scaler.save'
+    climate_scaler_filename = '/data/Hydra_Work/Rodeo_Data/scalers/climate_normalization_scaler.save'
     climate_scaler = joblib.load(climate_scaler_filename) 
     climate_indices = pd.DataFrame(climate_scaler.transform(climate_indices), columns=climate_indices.columns, index=climate_indices.index)
 
-    era5_scaler_filename = '/data/gbmc/Rodeo_Submission/Rodeo_Data/scalers/era5_scaler.save'
+    era5_scaler_filename = '/data/Hydra_Work/Rodeo_Data/scalers/era5_scaler.save'
     era5_scaler = joblib.load(era5_scaler_filename) 
     era5 = {key: pd.DataFrame(era5_scaler.transform(df), columns=df.columns, index=df.index) for key, df in era5.items()}
 
     for basin, df in daily_flow.items(): 
-        flow_scaler_filename = f'/data/gbmc/Rodeo_Submission/Rodeo_Data/scalers/flows/{basin}_flow_scaler.save'
+        flow_scaler_filename = f'/data/Hydra_Work/Rodeo_Data/scalers/flows/{basin}_flow_scaler.save'
         flow_scaler = joblib.load(flow_scaler_filename) 
         daily_flow[basin] = pd.DataFrame(flow_scaler.transform(df), columns=df.columns, index=df.index)
 
-    seasonal_scaler_filename = "/data/gbmc/Rodeo_Submission/Rodeo_Data/scalers/seasonal_scaler.save"
+    seasonal_scaler_filename = "/data/Hydra_Work/Rodeo_Data/scalers/seasonal_scaler.save"
     seasonl_scaler = joblib.load(seasonal_scaler_filename)
     seasonal_forecasts = {key: pd.DataFrame(seasonl_scaler.transform(df), columns=df.columns, index=df.index ) for key, df in seasonal_forecasts.items()}
 
-    static_scaler_filename = '/data/gbmc/Rodeo_Submission/Rodeo_Data/scalers/static_scaler.save'
+    static_scaler_filename = '/data/Hydra_Work/Rodeo_Data/scalers/static_scaler.save'
     static_scaler = joblib.load(static_scaler_filename) 
     Static_variables = pd.DataFrame(static_scaler.transform(Static_variables), columns=Static_variables.columns, index=Static_variables.index)
 
     static_basin_indices = pd.DataFrame(static_indices.loc[basin]).T
 
     # Get the start and end dates of the season of interest
-    forecast_dates_path = '/data/gbmc/Rodeo_Submission/Rodeo_Data/forecast_dates.csv'
+    forecast_dates_path = '/data/Hydra_Work/Rodeo_Data/forecast_dates.csv'
     forecast_dates_df = pd.read_csv(forecast_dates_path)
     forecast_dates = forecast_dates_df[forecast_dates_df['site_id'] == site_id]
 
