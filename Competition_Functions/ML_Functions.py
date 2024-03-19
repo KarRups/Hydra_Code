@@ -363,7 +363,7 @@ def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, er
             specific_loss, general_loss = 0, 0
             Climate_loss = 0
             permutation = torch.randperm(len(All_Dates))   
-            print(basin_count)
+            # print(basin_count)
             for i in range(0, Size, batch_size):
                 indices = permutation[i:i + batch_size]
                 batch_dates, final_forcing_distance = Prepare_Batch(All_Dates, indices)
@@ -412,7 +412,7 @@ def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, er
             if early_stopper != None:               
                 # Maybe I should instead define the earlystopper by how its comparison with climatology   
                 if early_stopper.early_stop(0.5*(specific_loss + general_loss) - Climate_loss):
-                    return general_losses, specific_losses
+                    return general_losses, specific_losses, climate_losses
 
             print(f'Epoch {epoch + 1}: {"Training" if Train_Mode else "Validation"} Mode')
             print('general difference :', (general_loss - Climate_loss)/Size , '\nspecific difference:', (specific_loss- Climate_loss)/Size)
@@ -425,7 +425,6 @@ def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, er
 
 
 def No_Body_Model_Run(All_Dates, basins, model_heads, era5, daily_flow, climatological_flows, climate_indices, seasonal_forecasts, static_indices, optimizer, scheduler, criterion, early_stopper = None, n_epochs = 20, batch_size = 2, group_lengths = [89, 90, 91, 92] , Train_Mode=True, device = 'cpu', specialised = True):
-    print('Start of run')
     basin_usage_counter = defaultdict(int)
     basin_count = defaultdict(int)
 
@@ -497,9 +496,9 @@ def No_Body_Model_Run(All_Dates, basins, model_heads, era5, daily_flow, climatol
                 if early_stopper.early_stop(Overall_loss - Climate_loss):
                     return Overall_losses, climate_losses
 
-            print(f'Epoch {epoch + 1}: {"Training" if Train_Mode else "Validation"} Mode')
-            print('loss difference :', (Overall_loss - Climate_loss)/Size)
-            print('Climatology loss:', Climate_loss/Size)
+            # print(f'Epoch {epoch + 1}: {"Training" if Train_Mode else "Validation"} Mode')
+            # print('loss difference :', (Overall_loss - Climate_loss)/Size)
+            # print('Climatology loss:', Climate_loss/Size)
            
         return Overall_losses, climate_losses
 
@@ -507,167 +506,4 @@ def No_Body_Model_Run(All_Dates, basins, model_heads, era5, daily_flow, climatol
         return s
 
 
-
-# Add a flag on whether or not to print messages
-def Old_Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, era5, daily_flow, climatological_flows, climate_indices, seasonal_forecasts, static_indices, optimizer, scheduler, criterion, early_stopper = None, n_epochs = 20, batch_size = 2, group_lengths = [89, 90, 91, 92] , Train_Mode=True, device = 'cpu', feed_forcing = True):
-    basin_usage_counter = defaultdict(int)
-    specific_losses, general_losses, climate_losses = [], [], []
-
-    Size = len(All_Dates)
-
-    # Set models to train mode if Train_Mode is True, else set to evaluation mode
-    Hydra_Body.train(Train_Mode)
-    General_Hydra_Head.train(Train_Mode)
-    [model_heads[f'{basin}'].train(Train_Mode) for basin in basins]
-
-    try:
-        for epoch in range(n_epochs):
-            specific_loss, general_loss = 0, 0
-            Climate_loss = 0    
-            permutation = torch.randperm(len(All_Dates))
-
-            for i in range(0, Size, batch_size):
-                indices = permutation[i:i + batch_size]
-                batch_dates = All_Dates[indices.cpu().numpy().astype(int)]
-                basin = np.random.choice(basins)
-
-                climatological_basin_flow = climatological_flows[basin]
-                static_basin_indices = pd.DataFrame(static_indices.loc[basin]).T
-
-
-                min_day = min(180 - forecast_datetime.dayofyear for forecast_datetime in batch_dates) + 1
-                random_day = np.random.choice(range(round(0.4 * min_day), min_day + 1))
-                proportion_first_value = 0.05
-                choices = [min_day]* int(proportion_first_value * 100) + [random_day]* int( (1 - proportion_first_value) * 100)
-                final_forcing_distance = np.random.choice(choices)
-
-
-                basin_key = f"{basin}_{final_forcing_distance}"
-                basin_usage_counter[basin_key] += 1
-
-                H_List, No_Flow_List, Forcing_List, True_Flow_List, Pre_Flow_List, in_season_list, Season_Flow_List = [[] for _ in range(7)]
-                Climatology_list = []
-
-                for forecast_datetime in batch_dates:
-                    end_season_date = forecast_datetime + pd.DateOffset(days = final_forcing_distance)
-                    forecast_length = np.random.choice(group_lengths)
-                    start_season_date = end_season_date - pd.DateOffset(days=forecast_length)
-                    start_forecast_season_date = max(start_season_date, forecast_datetime)
-                                        
-                    era5_basin = era5[f'{basin}_{forecast_datetime.year}']
-                    Seasonal_Forecasts = process_seasonal_forecasts(seasonal_forecasts, basin, forecast_datetime, end_season_date, columns_to_drop=None)
-                    History_H0 = process_forecast_date(daily_flow[basin], era5_basin, climate_indices, forecast_datetime)
-                    No_Flow_History_H0 = History_H0.drop('daily_flow', axis=1)
-
-                    Flat_H0 = History_H0.values.flatten()
-                    Flat_No_Flow_H0 = No_Flow_History_H0.values.flatten()
-
-                    # Bringing Historical data into forecast
-                    #Seasonal_Forecasts = fit_fourier_to_h0(No_Flow_History_H0.iloc[:,0:5], Seasonal_Forecasts, initial_guess_terms = 4)
-                    Seasonal_Forecasts = Get_History_Statistics(No_Flow_History_H0, Seasonal_Forecasts, n_variables = 5)
-
-                    # Extract values and column names from the single-row dataframe
-                    static_values = static_basin_indices.values
-                    static_values = np.tile(static_values, (len(Seasonal_Forecasts), 1))
-
-                    static_columns = static_basin_indices.columns
-
-                    # Assign values to new columns in Seasonal_Forecasts
-                    Seasonal_Forecasts[static_columns] = static_values
-                    climate_values = climatological_basin_flow[forecast_datetime.dayofyear  + 1 : end_season_date.dayofyear + 1].values
-                    climate_columns = ['Climatology_10', 'Climatology_50', 'Climatology_90']
-                    Seasonal_Forecasts[climate_columns] = climate_values # Try turning this off and seeing the performance
-
-                    Flat_H0_tensor = torch.tensor(Flat_H0.astype(np.float32)).to(device)
-                    Initial_Seasonal_Forecasts_tensor = torch.tensor(Seasonal_Forecasts.values.astype(np.float32)).to(device)
-                    Flat_No_Flow_H0_tensor = torch.tensor(Flat_No_Flow_H0.astype(np.float32)).to(device)
-
-
-
-                    Seasonal_Forecasts['In_Season'] = False
-                    Seasonal_Forecasts.loc[(Seasonal_Forecasts.index > start_forecast_season_date) & (Seasonal_Forecasts.index <= end_season_date), 'In_Season'] = True
-                    Seasonal_Forecasts['In_Season'] = Seasonal_Forecasts['In_Season'].astype(int)
-
-                    Climatology =  torch.tensor(climatological_basin_flow[forecast_datetime.dayofyear + 1 : end_season_date.dayofyear + 1].values, dtype=torch.float32).to(device)
-
-
-                    in_season_mask = torch.tensor(Seasonal_Forecasts['In_Season'].to_numpy()).to(device)
-                    in_season_list.append(in_season_mask)
-
-                    pre_season_flow = daily_flow[basin][(daily_flow[basin].index >= start_season_date) & (daily_flow[basin].index < forecast_datetime)]['daily_flow']
-                    Pre_Flow = np.sum(pre_season_flow)
-
-                    Season_Flow = daily_flow[basin][(daily_flow[basin].index > forecast_datetime) & (daily_flow[basin].index <= end_season_date)]['daily_flow']
-                    Season_Flow = torch.tensor(Season_Flow.values).to(device)
-                    True_Flow = torch.sum(Season_Flow*in_season_mask).unsqueeze(0)
-
-                    True_Flow = True_Flow + Pre_Flow
-                    Pre_Flow = torch.tensor(Pre_Flow).unsqueeze(0).to(device)
-
-                    In_Season_tensor = torch.tensor(Seasonal_Forecasts['In_Season'].values.astype(np.float32)).to(device)
-                    Seasonal_Forecasts_tensor = torch.cat([Initial_Seasonal_Forecasts_tensor, In_Season_tensor.unsqueeze(1)], dim=-1)
-
-
-                    H_List, No_Flow_List, Forcing_List, True_Flow_List, Pre_Flow_List, Season_Flow_List = [
-                        H_List + [Flat_H0_tensor], No_Flow_List + [Flat_No_Flow_H0_tensor], Forcing_List + [Seasonal_Forecasts_tensor],
-                        True_Flow_List + [True_Flow], Pre_Flow_List + [Pre_Flow], Season_Flow_List + [Season_Flow] ]
-                    
-                    Climatology_list = Climatology_list + [Climatology]
-
-                H_List_torch, No_Flow_List_torch, Forcing_List_torch, True_Flow_List_torch, Pre_Flow_List_torch, in_season_list_torch, Season_Flow_List_torch = [
-                    torch.stack(lst, dim=0) for lst in [H_List, No_Flow_List, Forcing_List, True_Flow_List, Pre_Flow_List, in_season_list, Season_Flow_List] ]
-
-                Climatology_list_torch = torch.stack(Climatology_list, dim = 0)
-
-                optimizer.zero_grad()   
-                Body_Output = Hydra_Body(Forcing_List_torch, No_Flow_List_torch)
-
-                Head_Input = Body_Output
-                if feed_forcing == True:
-                    Head_Input = torch.cat((Head_Input, Forcing_List_torch), dim=-1)
-
-
-                Basin_Head_Output = model_heads[f'{basin}'](Head_Input, H_List_torch)
-                General_Head_Output = General_Hydra_Head(Head_Input, No_Flow_List_torch)
-
-                # Removed  + Climatology_list_torch
-                Specific_Guesses = (Basin_Head_Output + Climatology_list_torch[...,1].view(1, len(Season_Flow), 1)) * in_season_list_torch.unsqueeze(-1) 
-                General_Guesses = (General_Head_Output + Climatology_list_torch[...,1].view(1, len(Season_Flow), 1)) * in_season_list_torch.unsqueeze(-1)
-                Climatology_Guesses = Climatology_list_torch * in_season_list_torch.unsqueeze(-1)
-                
-                # if criterion == SumPinballLoss:
-                Specific_Guesses = torch.sum(Specific_Guesses, dim=1) # + Pre_Flow_List_torch
-                General_Guesses = torch.sum(General_Guesses, dim=1) # + Pre_Flow_List_torch
-                Climatology_Guesses = torch.sum(Climatology_Guesses, dim=1)
-                Season_Flow_List_torch = torch.sum(Season_Flow_List_torch, dim=1)
-
-                loss_specific = criterion(Season_Flow_List_torch, Specific_Guesses)
-                loss_general = criterion(Season_Flow_List_torch, General_Guesses)
-                Climatology_loss = criterion(Season_Flow_List_torch, Climatology_Guesses)
-
-
-                if Train_Mode:
-                    loss = loss_general + loss_specific
-                    loss.backward(retain_graph=True)
-                    optimizer.step() 
-                    scheduler.step()
-
-                specific_loss += loss_specific.item() 
-                general_loss += loss_general.item()
-                Climate_loss += Climatology_loss.item()
-
-
-            if early_stopper != None:               
-                # Maybe I should instead define the earlystopper by how its comparison with climatology   
-                if early_stopper.early_stop(0.5*(specific_loss + general_loss) - Climate_loss):
-                    return general_losses, specific_losses
-
-            print(f'Epoch {epoch + 1}: {"Training" if Train_Mode else "Validation"} Mode')
-            print('general difference :', (general_loss - Climate_loss)/Size , '\nspecific difference:', (specific_loss- Climate_loss)/Size)
-            print('Climatology loss:', Climate_loss/Size)
-            general_losses.append(general_loss/Size) ; climate_losses.append(Climate_loss/Size) ; specific_losses.append(specific_loss/Size)
-        return general_losses, specific_losses, climate_losses
-
-    except KeyboardInterrupt:
-        return s
 
