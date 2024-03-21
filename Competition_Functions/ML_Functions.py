@@ -314,23 +314,6 @@ def Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, F
 
     return Basin_Head_Output, General_Head_Output
 
-def Old_Calculate_Losses_and_Predictions(Basin_Head_Output, General_Head_Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size):
-    
-    Specific_Guesses = (Basin_Head_Output + Climatology_list_torch[...,1].view(batch_size, len(Season_Flow), 1)) * in_season_list_torch.unsqueeze(-1)
-    General_Guesses = (General_Head_Output + Climatology_list_torch[...,1].view(batch_size, len(Season_Flow), 1)) * in_season_list_torch.unsqueeze(-1)
-    Climatology_Guesses = Climatology_list_torch * in_season_list_torch.unsqueeze(-1)
-
-    Specific_Guesses = torch.sum(Specific_Guesses, dim=1)
-    General_Guesses = torch.sum(General_Guesses, dim=1)
-    Climatology_Guesses = torch.sum(Climatology_Guesses, dim=1)
-    Season_Flow_List_torch = torch.sum(Season_Flow_List_torch, dim=1)
-
-    loss_specific = criterion(Season_Flow_List_torch, Specific_Guesses)
-    loss_general = criterion(Season_Flow_List_torch, General_Guesses)
-    Climatology_loss = criterion(Season_Flow_List_torch, Climatology_Guesses)
-
-    return loss_specific, loss_general, Climatology_loss
-
 def Calculate_Losses_and_Predictions(Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size):
     Guesses = (Output + Climatology_list_torch[...,1].view(batch_size, len(Season_Flow), 1)) * in_season_list_torch.unsqueeze(-1)
     Climatology_Guesses = Climatology_list_torch * in_season_list_torch.unsqueeze(-1)
@@ -343,7 +326,6 @@ def Calculate_Losses_and_Predictions(Output, Climatology_list_torch, in_season_l
     Climatology_loss = criterion(Season_Flow_List_torch, Climatology_Guesses)
 
     return loss, Climatology_loss
-
 
 def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, era5, daily_flow, climatological_flows, climate_indices, seasonal_forecasts, static_indices, optimizer, scheduler, criterion, early_stopper = None, n_epochs = 20, batch_size = 2, group_lengths = [89, 90, 91, 92] , Train_Mode=True, device = 'cpu', feed_forcing = True):
     basin_usage_counter = defaultdict(int)
