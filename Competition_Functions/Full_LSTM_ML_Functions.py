@@ -276,6 +276,8 @@ def Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, F
     if feed_forcing:
         Head_Input = torch.cat((Head_Input, Forcing_List_torch), dim=-1)
 
+    print('Hindcast', np.shape(H_List_torch))
+    print('Forecast', np.shape(Head_Input))
     Basin_Head_Output, _ = model_heads[f'{basin}'](H_List_torch, Head_Input)
     General_Head_Output, _ = General_Hydra_Head(No_Flow_List_torch, Head_Input)
     return Basin_Head_Output, General_Head_Output
@@ -349,7 +351,6 @@ def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, er
                 optimizer.zero_grad()   
                 Basin_Head_Output, General_Head_Output = Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, Forcing_List_torch, No_Flow_List_torch, H_List_torch, feed_forcing)
 
-                #loss_specific, loss_general, Climatology_loss = Calculate_Losses_and_Predictions(Basin_Head_Output, General_Head_Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size)
                 loss_general, Climatology_loss = Calculate_Losses_and_Predictions(General_Head_Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size)
                 loss_specific, _ = Calculate_Losses_and_Predictions(Basin_Head_Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size)
 
@@ -396,7 +397,7 @@ def No_Body_Model_Run(All_Dates, basins, model_heads, era5, daily_flow, climatol
             Overall_loss = 0
             Climate_loss = 0
             permutation = torch.randperm(len(All_Dates))   
-            print(basin_count)
+            #print(basin_count)
             for i in range(0, Size, batch_size):
                 indices = permutation[i:i + batch_size]
                 batch_dates, final_forcing_distance = Prepare_Batch(All_Dates, indices)
@@ -416,7 +417,11 @@ def No_Body_Model_Run(All_Dates, basins, model_heads, era5, daily_flow, climatol
                     Seasonal_Forecasts_tensor, in_season_mask = Process_Seasonal_Forecast(seasonal_forecasts, basin, forecast_datetime, end_season_date, static_basin_indices, climatological_basin_flow, No_Flow_History_H0, start_forecast_season_date, device)
                     Pre_Flow, True_Flow, Season_Flow, Climatology = Calculate_Flow_Data(daily_flow, climatological_basin_flow, basin, start_season_date, forecast_datetime, end_season_date, in_season_mask, device)
 
-                    H_List, No_Flow_List, Forcing_List, True_Flow_List, Pre_Flow_List, Season_Flow_List = [ H_List + [H0_tensor], No_Flow_List + [No_Flow_H0_tensor], Forcing_List + [Seasonal_Forecasts_tensor],
+                    History_H0_Tensor = torch.tensor(History_H0.values.astype(np.float32)).to(device)
+                    No_Flow_History_H0_Tensor = torch.tensor(No_Flow_History_H0.values.astype(np.float32)).to(device)
+    
+
+                    H_List, No_Flow_List, Forcing_List, True_Flow_List, Pre_Flow_List, Season_Flow_List = [ H_List + [History_H0_Tensor], No_Flow_List + [No_Flow_History_H0_Tensor], Forcing_List + [Seasonal_Forecasts_tensor],
                         True_Flow_List + [True_Flow], Pre_Flow_List + [Pre_Flow], Season_Flow_List + [Season_Flow] ]
                     in_season_list.append(in_season_mask)
                     Climatology_list = Climatology_list + [Climatology]
@@ -429,9 +434,9 @@ def No_Body_Model_Run(All_Dates, basins, model_heads, era5, daily_flow, climatol
                 optimizer.zero_grad()   
 
                 if specialised:
-                    Basin_Head_Output = model_heads[f'{basin}'](Forcing_List_torch, H_List_torch)
+                    Basin_Head_Output, _ = model_heads[f'{basin}'](H_List_torch, Forcing_List_torch)
                 else:
-                    Basin_Head_Output = model_heads(Forcing_List_torch, H_List_torch)
+                    Basin_Head_Output, _ = model_heads(H_List_torch, Forcing_List_torch)
 
                 loss, Climatology_loss = Calculate_Losses_and_Predictions(Basin_Head_Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size)
 
