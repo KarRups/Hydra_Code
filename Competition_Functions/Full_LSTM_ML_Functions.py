@@ -41,9 +41,9 @@ class Hindcast_LSTM_Block(nn.Module):
         if len(np.shape(x)) == 3:
             h0 = h0.view( self.num_layers * self.No_Directions, x.size(0), self.hidden_size).to(x.device)
             c0 = c0.view( self.num_layers * self.No_Directions, x.size(0), self.hidden_size).to(x.device)
-        else:
-            h0 = h0.view( self.num_layers * self.No_Directions, self.hidden_size).to(x.device)
-            c0 = torch.zeros(self.num_layers * self.No_Directions, self.hidden_size).to(x.device)
+        # else:
+        #     h0 = h0.view( self.num_layers * self.No_Directions, self.hidden_size).to(x.device)
+        #     c0 = torch.zeros(self.num_layers * self.No_Directions, self.hidden_size).to(x.device)
             
         out, (hn, cn) = self.lstm(x, (h0, c0)) 
         out = self.dropout(out)
@@ -91,22 +91,22 @@ class Google_LSTMModel(nn.Module):
     out = self.forecast(forecasts, hn,cn)
     return out, hind_out
 
-def Google_Model_Block(hindcast_input_size, forecast_input_size, hindcast_output_size, forecast_output_size, hidden_size, num_layers, device):
+def Google_Model_Block(hindcast_input_size, forecast_input_size, hindcast_output_size, forecast_output_size, hidden_size, num_layers, device, dropout = 0.0, bidirectional = False):
     # For now dropout and bidirectional aren't included here, can change that down the line
     # output_size for Hindcast doesn't actually matter
-    Hindcast = Hindcast_LSTM_Block(hindcast_input_size, hidden_size, num_layers, hindcast_output_size, dropout = 0.0, bidirectional = False)
-    Forecast = Forecast_LSTM_Block(forecast_input_size, hidden_size, num_layers, forecast_output_size, dropout = 0.0, bidirectional = False)
+    Hindcast = Hindcast_LSTM_Block(hindcast_input_size, hidden_size, num_layers, hindcast_output_size, dropout = dropout, bidirectional = bidirectional)
+    Forecast = Forecast_LSTM_Block(forecast_input_size, hidden_size, num_layers, forecast_output_size, dropout = dropout, bidirectional = bidirectional)
     Block = Google_LSTMModel(Hindcast, Forecast)
     Block.to(device)
 
     return Block
 
 
-def Specific_Heads(basins, hindcast_input_size, forecast_input_size, hindcast_output_size, forecast_output_size, hidden_size, num_layers, device):
+def Specific_Heads(basins, hindcast_input_size, forecast_input_size, hindcast_output_size, forecast_output_size, hidden_size, num_layers, device, dropout = 0.0, bidirectional = False):
     model_heads = {}
     for basin in basins:
-        basin_hindcast = Hindcast_LSTM_Block(hindcast_input_size, hidden_size, num_layers, hindcast_output_size, dropout = 0.0, bidirectional = False)
-        basin_forecast = Forecast_LSTM_Block(forecast_input_size, hidden_size, num_layers, forecast_output_size, dropout = 0.0, bidirectional = False)
+        basin_hindcast = Hindcast_LSTM_Block(hindcast_input_size, hidden_size, num_layers, hindcast_output_size, dropout = dropout, bidirectional = bidirectional)
+        basin_forecast = Forecast_LSTM_Block(forecast_input_size, hidden_size, num_layers, forecast_output_size, dropout = dropout, bidirectional = bidirectional)
     
         model_heads[f'{basin}'] = Google_LSTMModel(basin_hindcast, basin_forecast)
         model_heads[f'{basin}'].to(device)
