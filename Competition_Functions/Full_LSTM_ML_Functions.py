@@ -270,16 +270,33 @@ def Calculate_Flow_Data(daily_flow, climatological_basin_flow, basin, start_seas
     return Pre_Flow, True_Flow, Season_Flow, Climatology
 
 def Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, Forcing_List_torch, No_Flow_List_torch, H_List_torch, feed_forcing):
-    Body_Output, _ = Hydra_Body(No_Flow_List_torch, Forcing_List_torch) 
+    Body_Output, Body_Hindcast_Output = Hydra_Body(No_Flow_List_torch, Forcing_List_torch) 
     Head_Input = Body_Output
 
     if feed_forcing:
         Head_Input = torch.cat((Head_Input, Forcing_List_torch), dim=-1)
 
-    print('Hindcast', np.shape(H_List_torch))
-    print('Forecast', np.shape(Head_Input))
-    Basin_Head_Output, _ = model_heads[f'{basin}'](H_List_torch, Head_Input)
-    General_Head_Output, _ = General_Hydra_Head(No_Flow_List_torch, Head_Input)
+    # Want to torch.cat relevant variables on top
+    
+    Use_Body_Hindcast = True
+    if Use_Body_Hindcast:
+        remaining_columns_indices = []
+        for col_index, col in enumerate(H_List_torch.transpose(0, 2)):
+            if col not in No_Flow_List_torch.transpose(0, 2):
+                remaining_columns_indices.append(col_index)
+
+        # Extract the remaining columns from H_List_torch
+        remaining_columns = H_List_torch[:,  :, remaining_columns_indices]
+
+        # Concatenate remaining_rows with Body_Hindcast_Output
+        Body_Hindcast_Output_Extra = torch.cat((Body_Hindcast_Output, remaining_columns), dim=2)
+
+        Basin_Head_Output, _ = model_heads[f'{basin}'](Body_Hindcast_Output_Extra, Head_Input)
+        General_Head_Output, _ = General_Hydra_Head(Body_Hindcast_Output, Head_Input)
+
+    else:
+        Basin_Head_Output, _ = model_heads[f'{basin}'](H_List_torch, Head_Input)
+        General_Head_Output, _ = General_Hydra_Head(No_Flow_List_torch, Head_Input)
     return Basin_Head_Output, General_Head_Output
 
 # This should be fine. but maybe isn't with how models are defined
