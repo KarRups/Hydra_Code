@@ -197,6 +197,8 @@ def Prepare_Batch(Dates, indices):
     random_day = np.random.choice(range(round(0.4 * min_day), min_day + 1))
     proportion_first_value = 0.05
     choices = [min_day]* int(proportion_first_value * 100) + [random_day]* int( (1 - proportion_first_value) * 100)
+    
+    # Can instead set the final_forcing distance to something like 1, if we want to default back to day ahead prediction
     final_forcing_distance = np.random.choice(choices)
     return batch_dates, final_forcing_distance
 
@@ -297,6 +299,7 @@ def Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, F
     else:
         Basin_Head_Output, _ = model_heads[f'{basin}'](H_List_torch, Head_Input)
         General_Head_Output, _ = General_Hydra_Head(No_Flow_List_torch, Head_Input)
+        
     return Basin_Head_Output, General_Head_Output
 
 # This should be fine. but maybe isn't with how models are defined
@@ -386,9 +389,9 @@ def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, er
                 if early_stopper.early_stop(0.5*(specific_loss + general_loss) - Climate_loss):
                     return general_losses, specific_losses, climate_losses
 
-            print(f'Epoch {epoch + 1}: {"Training" if Train_Mode else "Validation"} Mode')
-            print('general difference :', (general_loss - Climate_loss)/Size , '\nspecific difference:', (specific_loss- Climate_loss)/Size)
-            print('Climatology loss:', Climate_loss/Size)
+            # print(f'Epoch {epoch + 1}: {"Training" if Train_Mode else "Validation"} Mode')
+            # print('general difference :', (general_loss - Climate_loss)/Size , '\nspecific difference:', (specific_loss- Climate_loss)/Size)
+            # print('Climatology loss:', Climate_loss/Size)
             general_losses.append(general_loss/Size) ; climate_losses.append(Climate_loss/Size) ; specific_losses.append(specific_loss/Size)
         return general_losses, specific_losses, climate_losses
 
