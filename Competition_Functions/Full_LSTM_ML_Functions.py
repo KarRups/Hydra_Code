@@ -198,8 +198,8 @@ def Prepare_Batch(Dates, indices):
     proportion_first_value = 0.05
     choices = [min_day]* int(proportion_first_value * 100) + [random_day]* int( (1 - proportion_first_value) * 100)
     
-    # Can instead set the final_forcing distance to something like 1, if we want to default back to day ahead prediction
-    final_forcing_distance = np.random.choice(choices)
+    # Changed to 7 to do 7 day ahead prediction
+    final_forcing_distance = 7 #np.random.choice(choices)
     return batch_dates, final_forcing_distance
 
 def Prepare_Basin(basins, climatological_flows, static_indices, final_forcing_distance, basin_usage_counter, basin_count):
