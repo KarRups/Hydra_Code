@@ -1,0 +1,1 @@
+{'hidden_size': 16, 'num_layers': 1, 'dropout': 0.1, 'bidirectional': True, 'learning_rate': 1e-05}

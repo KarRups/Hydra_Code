@@ -1,0 +1,1 @@
+{'hidden_size': 128, 'num_layers': 3, 'dropout': 0.1, 'bidirectional': False, 'learning_rate': 1e-05, 'basin': 'hungry_horse_reservoir_inflow'}

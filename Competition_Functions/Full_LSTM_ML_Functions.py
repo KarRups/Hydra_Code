@@ -215,8 +215,10 @@ def Prepare_Basin(basins, climatological_flows, static_indices, final_forcing_di
 def Get_Relevant_Dates(forecast_datetime, final_forcing_distance, group_lengths):
     forecast_length = np.random.choice(group_lengths)
     end_season_date = forecast_datetime + pd.DateOffset(days = final_forcing_distance)
-    start_season_date = end_season_date - pd.DateOffset(days=forecast_length)
-    start_forecast_season_date = max(start_season_date, forecast_datetime)
+    start_season_date = end_season_date - pd.DateOffset(days= forecast_length - 1)
+    start_forecast_season_date = max(start_season_date, forecast_datetime + pd.DateOffset(days = 1))
+    #print('forecast date', forecast_datetime, 'end_season_date', end_season_date, 'start_season_date', start_forecast_season_date)
+   
     
     return start_season_date, start_forecast_season_date, end_season_date
 
@@ -242,7 +244,7 @@ def Process_History(daily_flow_basin, era5_basin, climate_indices, forecast_date
 def Process_Seasonal_Forecast(seasonal_forecasts, basin, forecast_datetime, end_season_date, static_basin_indices, climatological_basin_flow, No_Flow_History_H0, start_forecast_season_date, device):
     Seasonal_Forecasts = process_seasonal_forecasts(seasonal_forecasts, basin, forecast_datetime, end_season_date, columns_to_drop=None)
     #Seasonal_Forecasts = fit_fourier_to_h0(No_Flow_History_H0.iloc[:,0:5], Seasonal_Forecasts, initial_guess_terms = 4)
-    Seasonal_Forecasts = Get_History_Statistics(No_Flow_History_H0, Seasonal_Forecasts, n_variables=5)
+    #Seasonal_Forecasts = Get_History_Statistics(No_Flow_History_H0, Seasonal_Forecasts, n_variables=5)
     Seasonal_Forecasts = Add_Static_To_Series(static_basin_indices, Seasonal_Forecasts)
 
     climate_values = climatological_basin_flow[forecast_datetime.dayofyear + 1 : end_season_date.dayofyear + 1].values
@@ -304,7 +306,8 @@ def Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, F
 
 # This should be fine. but maybe isn't with how models are defined
 def Calculate_Losses_and_Predictions(Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size):
-    Guesses = (Output + Climatology_list_torch[...,1].view(batch_size, len(Season_Flow), 1)) * in_season_list_torch.unsqueeze(-1)
+    #Guesses = (Output + Climatology_list_torch[...,1].view(batch_size, len(Season_Flow), 1)) * in_season_list_torch.unsqueeze(-1)
+    Guesses = Output * in_season_list_torch.unsqueeze(-1)
     Climatology_Guesses = Climatology_list_torch * in_season_list_torch.unsqueeze(-1)
 
     Guesses = torch.sum(Guesses, dim=1)
@@ -376,7 +379,8 @@ def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, er
 
                 if Train_Mode:
                     loss = loss_general + loss_specific
-                    loss.backward(retain_graph=True)
+                    percentage_loss = loss/Climatology_loss
+                    loss.backward()
                     optimizer.step() 
                     scheduler.step()
 
@@ -459,9 +463,10 @@ def No_Body_Model_Run(All_Dates, basins, model_heads, era5, daily_flow, climatol
                     Basin_Head_Output, _ = model_heads(H_List_torch, Forcing_List_torch)
 
                 loss, Climatology_loss = Calculate_Losses_and_Predictions(Basin_Head_Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size)
-
+                # Attempt to standardise by difficulty?
+                percentage_loss = loss/Climatology_loss
                 if Train_Mode:
-                    loss.backward(retain_graph=True)
+                    loss.backward()
                     optimizer.step() 
                     scheduler.step()
 
