@@ -1,0 +1,1 @@
+{'body_hidden_size': 64, 'body_num_layer': 1, 'body_dropout': 0.1, 'bidirectional': False, 'body_output': 4, 'body_learning_rate': 0.001, 'head_hidden_size': 32, 'head_num_layer': 1, 'head_dropout': 0.2, 'head_learning_rate': 0.001}

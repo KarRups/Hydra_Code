@@ -1,0 +1,94 @@
+Traceback (most recent call last):
+  File "/data/Hydra_Work/Tuning/Tuning_Python_Script.py", line 15, in <module>
+    from Processing_Functions import process_forecast_date, process_seasonal_forecasts
+  File "/data/Hydra_Work/Competition_Functions/Processing_Functions.py", line 7, in <module>
+    from scipy.optimize import curve_fit
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.11/site-packages/scipy/optimize/__init__.py", line 426, in <module>
+    from ._linprog import linprog, linprog_verbose_callback
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.11/site-packages/scipy/optimize/_linprog.py", line 21, in <module>
+    from ._linprog_highs import _linprog_highs
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.11/site-packages/scipy/optimize/_linprog_highs.py", line 20, in <module>
+    from ._highs._highs_wrapper import _highs_wrapper
+ImportError: /lib64/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/gbmc/miniforge3/envs/Hydra_New/lib/python3.11/site-packages/scipy/optimize/_highs/_highs_wrapper.cpython-311-x86_64-linux-gnu.so)
+Hydra_New
+/home/gbmc/miniforge3/envs/Hydra_New/lib/python311.zip
+Traceback (most recent call last):
+  File "/data/Hydra_Work/Tuning/Tuning_Python_Script.py", line 15, in <module>
+    from Processing_Functions import process_forecast_date, process_seasonal_forecasts
+  File "/data/Hydra_Work/Competition_Functions/Processing_Functions.py", line 7, in <module>
+    from scipy.optimize import curve_fit
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.11/site-packages/scipy/optimize/__init__.py", line 413, in <module>
+    from ._linprog import linprog, linprog_verbose_callback
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.11/site-packages/scipy/optimize/_linprog.py", line 21, in <module>
+    from ._linprog_highs import _linprog_highs
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.11/site-packages/scipy/optimize/_linprog_highs.py", line 20, in <module>
+    from ._highs._highs_wrapper import _highs_wrapper
+ImportError: /lib64/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/gbmc/miniforge3/envs/Hydra_New/lib/python3.11/site-packages/scipy/optimize/_highs/_highs_wrapper.cpython-311-x86_64-linux-gnu.so)
+Hydra_New
+/home/gbmc/miniforge3/envs/Hydra_New/lib/python311.zip
+Traceback (most recent call last):
+  File "/data/Hydra_Work/Tuning/Tuning_Python_Script.py", line 15, in <module>
+    from Processing_Functions import process_forecast_date, process_seasonal_forecasts
+  File "/data/Hydra_Work/Competition_Functions/Processing_Functions.py", line 7, in <module>
+    from scipy.optimize import curve_fit
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.11/site-packages/scipy/optimize/__init__.py", line 417, in <module>
+    from ._linprog import linprog, linprog_verbose_callback
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.11/site-packages/scipy/optimize/_linprog.py", line 21, in <module>
+    from ._linprog_highs import _linprog_highs
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.11/site-packages/scipy/optimize/_linprog_highs.py", line 20, in <module>
+    from ._highs._highs_wrapper import _highs_wrapper
+ImportError: /lib64/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/gbmc/miniforge3/envs/Hydra_New/lib/python3.11/site-packages/scipy/optimize/_highs/_highs_wrapper.cpython-311-x86_64-linux-gnu.so)
+Hydra_New
+/home/gbmc/miniforge3/envs/Hydra_New/lib/python312.zip
+Traceback (most recent call last):
+  File "/data/Hydra_Work/Tuning/Tuning_Python_Script.py", line 15, in <module>
+    from Processing_Functions import process_forecast_date, process_seasonal_forecasts
+  File "/data/Hydra_Work/Competition_Functions/Processing_Functions.py", line 5, in <module>
+    import pandas as pd
+ModuleNotFoundError: No module named 'pandas'
+Hydra_New
+/home/gbmc/miniforge3/envs/Hydra_New/lib/python312.zip
+Traceback (most recent call last):
+  File "/data/Hydra_Work/Tuning/Tuning_Python_Script.py", line 24, in <module>
+    import joblib
+ModuleNotFoundError: No module named 'joblib'
+Hydra_New
+/home/gbmc/miniforge3/envs/Hydra_New/lib/python312.zip
+Traceback (most recent call last):
+  File "/data/Hydra_Work/Tuning/Tuning_Python_Script.py", line 105, in <module>
+    climate_scaler = joblib.load(climate_scaler_filename) 
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.12/site-packages/joblib/numpy_pickle.py", line 658, in load
+    obj = _unpickle(fobj, filename, mmap_mode)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.12/site-packages/joblib/numpy_pickle.py", line 577, in _unpickle
+    obj = unpickler.load()
+          ^^^^^^^^^^^^^^^^
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.12/pickle.py", line 1205, in load
+    dispatch[key[0]](self)
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.12/pickle.py", line 1530, in load_stack_global
+    self.append(self.find_class(module, name))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.12/pickle.py", line 1572, in find_class
+    __import__(module, level=0)
+ModuleNotFoundError: No module named 'sklearn'
+Hydra_New
+/home/gbmc/miniforge3/envs/Hydra_New/lib/python312.zip
+Traceback (most recent call last):
+  File "/data/Hydra_Work/Tuning/Tuning_Python_Script.py", line 105, in <module>
+    climate_scaler = joblib.load(climate_scaler_filename) 
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.12/site-packages/joblib/numpy_pickle.py", line 658, in load
+    obj = _unpickle(fobj, filename, mmap_mode)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.12/site-packages/joblib/numpy_pickle.py", line 577, in _unpickle
+    obj = unpickler.load()
+          ^^^^^^^^^^^^^^^^
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.12/pickle.py", line 1205, in load
+    dispatch[key[0]](self)
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.12/pickle.py", line 1530, in load_stack_global
+    self.append(self.find_class(module, name))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gbmc/miniforge3/envs/Hydra_New/lib/python3.12/pickle.py", line 1572, in find_class
+    __import__(module, level=0)
+ModuleNotFoundError: No module named 'sklearn'
