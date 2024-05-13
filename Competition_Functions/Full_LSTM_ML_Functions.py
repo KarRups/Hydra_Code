@@ -159,6 +159,7 @@ class SumPinballLoss(nn.Module):
             modeled_quantile = modeled[...,i]
             loss = torch.nanmean(torch.max(quantile * torch.nansum(observed - modeled_quantile), (quantile - 1) * torch.nansum(observed - modeled_quantile) ))
 
+            
         
             output_losses.append(loss)
 
@@ -167,7 +168,40 @@ class SumPinballLoss(nn.Module):
         
         return overall_loss
     
+class ChangingPinballLoss(nn.Module): # 4 differnt trials to run to show the effect of loss function to seasnoal flow prediction when using LSTMs/Transformers
+    def __init__(self, quantiles = [0.1,0.5,0.9]):
+        super(SumPinballLoss, self).__init__()
+        self.quantiles = quantiles
 
+    def forward(self, observed, modeled, multiplier, constant = 1):
+        # Initialize a list to store losses for each output
+        output_losses = []
+        observed = observed.squeeze()
+
+        #modeled = torch.sum(modeled, dim = 1)
+ 
+        # Calculate the quantile loss for each output and quantile
+        for i, quantile in enumerate(self.quantiles):
+
+            modeled_quantile = modeled[...,i]
+            loss = torch.nanmean(torch.max(quantile * torch.nansum(observed - modeled_quantile), (quantile - 1) * torch.nansum(observed - modeled_quantile) ))
+
+            length = loss.size(0)
+            if multiplier == 'Linear':
+                multipliers = torch.arange(length) * constant
+            elif multiplier == 'exponential':
+                multipliers = torch.exp(torch.arange(length) * constant)
+            elif multiplier == "quadratic":
+                multipliers = torch.clamp(constant[1]*(torch.arange(length) - constant[0]) ** 2, min=0)
+
+        
+            loss = loss*multipliers
+            output_losses.append(loss)
+            
+        # Sum the losses for each output and quantile
+        overall_loss = sum(output_losses)
+        
+        return overall_loss
 
 class EarlyStopper:
     def __init__(self, patience=1, min_delta=0):
