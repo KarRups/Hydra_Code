@@ -1,14 +1,16 @@
-import os
-import joblib
-import pandas as pd
-import numpy as np
-import random
-import itertools
-
-import matplotlib.pyplot as plt
-plt.style.use('tableau-colorblind10')
-
 import sys
+import os
+
+def get_env():
+    sp = sys.path[1].split("/")
+    if "envs" in sp:
+        return sp[sp.index("envs") + 1]
+    else:
+        return ""
+    
+print(get_env())
+print(sys.path[1])
+
 sys.path.append('/data/Hydra_Work/Competition_Functions') 
 from Processing_Functions import process_forecast_date, process_seasonal_forecasts
 from Data_Transforming import read_nested_csvs, generate_daily_flow, use_USGS_flow_data, USGS_to_daily_df_yearly
@@ -18,6 +20,15 @@ from Folder_Work import filter_rows_by_year, csv_dictionary, add_day_of_year_col
 
 sys.path.append('/data/Hydra_Work/Post_Rodeo_Work/ML_Functions.py')
 from Full_LSTM_ML_Functions import Specific_Heads, Google_Model_Block, SumPinballLoss, EarlyStopper, Model_Run, No_Body_Model_Run
+
+import joblib
+import pandas as pd
+import numpy as np
+import random
+import itertools
+
+import matplotlib.pyplot as plt
+plt.style.use('tableau-colorblind10')
 
 
 
@@ -163,8 +174,12 @@ static_size = np.shape(Static_variables)[1]
 forecast_size = np.shape(seasonal_forecasts['american_river_folsom_lake_2000_apr'])[1]
 History_Fourier_in_forcings = 0 #2*3*(6 - 1)
 Climate_guess = 3
-History_Statistics_in_forcings = 5*2
+History_Statistics_in_forcings = 0 # 5*2
 
+forecast_input_size = forecast_size + static_size + History_Fourier_in_forcings + History_Statistics_in_forcings  + Climate_guess + 3
+output_size, head_hidden_size, head_num_layers =  3, 64, 3
+body_hindcast_input_size = 16
+body_forecast_input_size = forecast_input_size
 head_input_size = forecast_size + static_size + History_Fourier_in_forcings + History_Statistics_in_forcings  + Climate_guess + 3
 head_output_size = 3
 
@@ -180,66 +195,115 @@ forecast_input_size = forecast_size + static_size + History_Fourier_in_forcings 
 output_size, head_hidden_size, head_num_layers =  3, 64, 3
 hindcast_input_size = 17
 
-# Do we want hindcast and forecast num-layers to be different?
-def define_models(hindcast_input_size, forecast_input_size, hidden_size, num_layers, dropout, bidirectional, learning_rate, copies = 3, forecast_output_size = 3, device = device):
-    models = {}
-    params_to_optimize = {}
+def define_models_hydra(body_hindcast_input_size, body_forecast_input_size, body_output_size, body_hidden_size, body_num_layers, body_dropout,
+                        head_hidden_size, head_num_layers, head_forecast_output_size, head_dropout, bidirectional, basins,
+                        learning_rate_general_head, learning_rate_head, learning_rate_body, LR = 1e-3, 
+                        additional_specific_head_hindcast_input_size = 1, additional_specific_head_forecast_input_size = 0,
+                        copies=3, device=None):
+    Hydra_Bodys = {}
+    Basin_Heads = {}
+    General_Heads = {}   
+    general_optimizers = {}
     optimizers = {}
     schedulers = {}
     
-    hindcast_output_size = forecast_output_size
-    for copy in range(copies):
-        models[copy] = Google_Model_Block(hindcast_input_size, forecast_input_size, hindcast_output_size, forecast_output_size, hidden_size, num_layers, device, dropout, bidirectional)
-        
-        models[copy].to(device)
-        params_to_optimize[copy] = list(models[copy].parameters())
+    body_forecast_output_size = body_output_size
+    body_hindcast_output_size = body_output_size
+    
+    # Define head hindcast size as head-forecast for simplicty
+    head_hindcast_output_size = head_forecast_output_size
+    specific_head_hindcast_output_size = head_forecast_output_size
+    specific_head_forecast_output_size = head_forecast_output_size
+    specific_head_hidden_size = head_hidden_size
+    specific_head_num_layers = head_num_layers
+    
+    # Head takes Body as inputs
+    #head_hindcast_input_size = body_hindcast_input_size 
+    head_hindcast_input_size = body_hindcast_output_size
+    head_forecast_input_size = body_forecast_output_size
+    
+    # Specific input size
+    specific_head_hindcast_input_size = head_hindcast_input_size + additional_specific_head_hindcast_input_size
+    specific_head_forecast_input_size = head_forecast_input_size + additional_specific_head_forecast_input_size
+    
 
-        optimizers[copy] = torch.optim.Adam(params_to_optimize[copy], lr= learning_rate, weight_decay = 1e-3)
+    
+    for copy in range(copies):
+        Hydra_Bodys[copy] = Google_Model_Block(body_hindcast_input_size, body_forecast_input_size, body_hindcast_output_size, body_forecast_output_size, body_hidden_size, body_num_layers, device, body_dropout, bidirectional)
+        General_Heads[copy] = Google_Model_Block(head_hindcast_input_size, head_forecast_input_size, head_hindcast_output_size, head_forecast_output_size, head_hidden_size, head_num_layers, device, head_dropout, bidirectional)
+        Basin_Heads[copy] = Specific_Heads(basins, specific_head_hindcast_input_size, specific_head_forecast_input_size, specific_head_hindcast_output_size, specific_head_forecast_output_size, specific_head_hidden_size, specific_head_num_layers, device, head_dropout, bidirectional)
+
+
+        specific_head_parameters = list()
+        for basin, model in Basin_Heads[copy].items():
+            specific_head_parameters += list(model.parameters())
+
+        optimizers[copy] = torch.optim.Adam(
+        # Extra LR is the global learning rate, not really important
+        [
+            {"params": General_Heads[copy].parameters(), "lr": learning_rate_general_head},
+            {"params": specific_head_parameters, "lr": learning_rate_head},
+            {"params": Hydra_Bodys[copy].parameters(), "lr": learning_rate_body},
+        ],
+        lr=LR, )
+
+        general_optimizers[copy] = torch.optim.Adam(
+        # Extra LR is the global learning rate, not really important
+        [
+            {"params": General_Heads[copy].parameters(), "lr": learning_rate_general_head},
+            {"params": Hydra_Bodys[copy].parameters(), "lr": learning_rate_body},
+        ],
+        lr=LR, )
         schedulers[copy] = lr_scheduler.CosineAnnealingLR(optimizers[copy], T_max=1e4)
 
-    return models, params_to_optimize, optimizers, schedulers
+    return Hydra_Bodys, General_Heads, Basin_Heads, optimizers, schedulers, general_optimizers 
 
-def update_final_parameters(Final_Parameters, basin, min_val_loss_parameters, min_val_loss):
-    Final_Parameters['basin'].append(basin)
-    Final_Parameters['hidden_size'].append(min_val_loss_parameters[0])
-    Final_Parameters['num_layers'].append(min_val_loss_parameters[1])
-    Final_Parameters['dropout'].append(min_val_loss_parameters[2])
-    Final_Parameters['bidirectional'].append(min_val_loss_parameters[3])
-    Final_Parameters['learning_rate'].append(min_val_loss_parameters[4])
-    Final_Parameters['val_loss'].append(min_val_loss)
-    
 import ray
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.stopper import TrialPlateauStopper
-from ray.tune.search.optuna import OptunaSearch
-import optuna
 
 # Fixed parameters
 total_epochs = 2
-n_epochs = 1  # Epochs between tests
+n_epochs = 1 # Epochs between tests
 group_lengths = np.arange(180)
 batch_size = 1
 copies = 3
+head_output_size = 3
 
 # parameters to tune
-hidden_sizes = [16, 64, 128]
-num_layers =  [1,3]
-dropout = [0.1, 0.4]
-bidirectional = [False, True]
-learning_rate = [1e-3, 1e-5]
+# chose 128, 2, 0.1, 1e-3, 6, 32, 1, 0.4, 1e-3
+body_hidden_sizes = [64, 128, 256]
+body_num_layers = [1] #  [1, 3]
+body_dropouts = [0.4] #[0.1, 0.4]
+body_learning_rates = [1e-3, 1e-5]
+body_outputs = [3, 6] # Say hindcast and forecasts have same outputrs body_hindcast_output_size
 
-# Set up configuration space
+
+head_hidden_sizes = [16, 32, 64]
+head_num_layers = [1] #[1, 3]
+head_dropouts = [0.2] #[0.1, 0.4, 0.7]
+head_learning_rates = [1e-3, 1e-5]
+LR = 1e-3
+bidirectionals = [False, True]
+
 config_space = {
-    "hidden_size": tune.grid_search(hidden_sizes),
-    "num_layers": tune.grid_search(num_layers),
-    "dropout": tune.grid_search(dropout),
-    "bidirectional": tune.grid_search(bidirectional),
-    "learning_rate": tune.grid_search(learning_rate)
+    "body_hidden_size": tune.grid_search(body_hidden_sizes),
+    "body_num_layer": tune.grid_search(body_num_layers),
+    "body_dropout": tune.grid_search(body_dropouts),
+    "bidirectional": tune.grid_search(bidirectionals),
+    "body_output": tune.grid_search(body_outputs),
+    "body_learning_rate": tune.grid_search(body_learning_rates),
+    "head_hidden_size": tune.grid_search(head_hidden_sizes),
+    "head_num_layer": tune.grid_search(head_num_layers),
+    "head_dropout": tune.grid_search(head_dropouts),
+    "head_learning_rate": tune.grid_search(head_learning_rates),
+    "general_head_learning_rate": tune.grid_search(head_learning_rates),
 }
 
-def train_model(config):
+
+def train_model_hydra(config):
 
     All_Dates = ray.get(All_Dates_id)  
     Val_Dates = ray.get(Val_Dates_id)  
@@ -250,54 +314,91 @@ def train_model(config):
     seasonal_forecasts = ray.get(seasonal_forecasts_id)
     Static_variables = ray.get(Static_variables_id)
 
-
-
-    copies = 3
-    
+    copies = 1
+    warmup = 1
     device = torch.device('cuda' if torch.cuda.
                     is_available() else 'cpu')
-    
-    models, params_to_optimize, optimizers, schedulers = define_models(hindcast_input_size, forecast_input_size,
-    config["hidden_size"], config["num_layers"], config["dropout"],
-    config["bidirectional"], config["learning_rate"], copies=copies, device = device)
+   
 
+    Hydra_Bodys, General_Hydra_Heads, model_heads, optimizers, schedulers, general_optimizers  = define_models_hydra(body_hindcast_input_size, body_forecast_input_size, config['body_output'],
+                                config['body_hidden_size'], config['body_num_layer'], config['body_dropout'], 
+                                config['head_hidden_size'], config['head_num_layer'], 3, config['head_dropout'], config['bidirectional'], basins,
+                                config['general_head_learning_rate'], config['head_learning_rate'], config['body_learning_rate'], LR, device = device
+                                )
+     
 
-    losses, val_losses = [], []
+    general_losses, specific_losses, general_val_losses, specific_val_losses, val_losses = [], [], [], [], []
+
 
     for epoch in range(total_epochs):
-
-        train_losses = {}
-        epoch_val_losses = {}
-
+        train_general_losses = {}
+        train_specific_losses = {}
+        epoch_val_general_losses = {}
+        epoch_val_specific_losses = {}
+        climate_losses = {}
+        
         for copy in range(copies):
+            # Initialise
+            train_general_losses[copy], train_specific_losses[copy], climate_losses[copy] = Model_Run(All_Dates, basins, Hydra_Bodys[copy], General_Hydra_Heads[copy], model_heads[copy], era5, daily_flow, climatological_flows, climate_indices, seasonal_forecasts,
+                Static_variables, general_optimizers[copy], schedulers[copy], criterion, early_stopper= None, n_epochs= warmup,
+                batch_size=batch_size, group_lengths=group_lengths, Train_Mode=True, device=device, feed_forcing = False)
+                        
 
-             # Need to fix the outputs of No_Body_Model_Run
-            train_losses[copy], Climate_Loss = No_Body_Model_Run(All_Dates, [basin], models[copy], era5, daily_flow, climatological_flows, climate_indices, seasonal_forecasts,
+            # Full Training
+            train_general_losses[copy], train_specific_losses[copy], climate_losses[copy] = Model_Run(All_Dates, basins, Hydra_Bodys[copy], General_Hydra_Heads[copy], model_heads[copy], era5, daily_flow, climatological_flows, climate_indices, seasonal_forecasts,
                 Static_variables, optimizers[copy], schedulers[copy], criterion, early_stopper= None, n_epochs=n_epochs,
-                batch_size=batch_size, group_lengths=group_lengths, Train_Mode=True, device=device, specialised=False)
-            epoch_val_losses[copy], Climate_Loss = No_Body_Model_Run(Val_Dates, [basin], models[copy], era5, daily_flow, climatological_flows, climate_indices, seasonal_forecasts,
+                batch_size=batch_size, group_lengths=group_lengths, Train_Mode=True, device=device, feed_forcing = False)
+            epoch_val_general_losses[copy], epoch_val_specific_losses[copy], climate_losses[copy] = Model_Run(Val_Dates, basins, Hydra_Bodys[copy], General_Hydra_Heads[copy], model_heads[copy], era5, daily_flow, climatological_flows, climate_indices, seasonal_forecasts,
                 Static_variables, optimizers[copy], schedulers[copy], criterion, early_stopper= None, n_epochs=n_epochs,
-                batch_size=batch_size, group_lengths=group_lengths, Train_Mode=False, device=device, specialised=False)
+                batch_size=batch_size, group_lengths=group_lengths, Train_Mode=False, device=device, feed_forcing = False)
 
-        loss = np.mean(list(train_losses.values())) - Climate_Loss
-        val_loss = np.mean(list(epoch_val_losses.values())).mean() - Climate_Loss
+        general_loss = np.mean(list(train_general_losses.values()))
+        specific_loss = np.mean(list(train_specific_losses.values()))
+        climate_loss = np.mean(list(climate_losses.values()))
+        
+        epoch_val_general_loss = np.mean(list(epoch_val_general_losses.values())).mean()
+        epoch_val_specific_loss = np.mean(list(epoch_val_specific_losses.values())).mean()
+        
+        
+        general_losses.append(general_loss)
+        specific_losses.append(specific_loss)
+        specific_val_losses.append(epoch_val_specific_loss)
+        general_val_losses.append(epoch_val_general_loss)
 
+        val_loss = (0.5*(epoch_val_general_loss + epoch_val_specific_loss) - climate_loss)
+        print(val_loss)
+        print(climate_loss)
+        print(np.mean(climate_loss))
+        candidate_val_loss = ((val_loss.mean() - climate_loss))/np.mean(climate_loss)
+        val_loss = np.min([val_loss, candidate_val_loss ])
+         
+        # if candidate_val_loss == val_loss:
+        #    torch.save(models[0], save_path)
+               
         ray.train.report({'val_loss' : val_loss})
 
-        losses.append(loss)
         val_losses.append(val_loss)
 
 
     return val_loss
 
-    
+
 
 from ray import train, tune
 
 
-
 ray.shutdown()
-ray.init(runtime_env = { "env_vars":   {"PYTHONPATH": '/data/Hydra_Work/Competition_Functions/' } } )
+ray.init(runtime_env = { "env_vars":   {"PYTHONPATH": '/data/Hydra_Work/Tuning/Tuning_Python_Script.py' } } )
+         
+All_Dates_id = ray.put(All_Dates)  
+Val_Dates_id = ray.put(Val_Dates)  
+era5_id = ray.put(era5)  
+daily_flow_id = ray.put(daily_flow)  
+climatological_flows_id = ray.put(climatological_flows)
+climate_indices_id = ray.put(climate_indices)
+seasonal_forecasts_id = ray.put(seasonal_forecasts)
+Static_variables_id = ray.put(Static_variables)
+
          
 All_Dates_id = ray.put(All_Dates)  
 Val_Dates_id = ray.put(Val_Dates)  
@@ -313,7 +414,7 @@ asha_scheduler = ASHAScheduler(
     metric='val_loss',
     mode='min',
     max_t=100,
-    grace_period=5,
+    grace_period=10,
     reduction_factor=3,
     brackets=1,
 )
@@ -331,18 +432,28 @@ plateau_stopper = TrialPlateauStopper(
     mode="min",
 )
 
-
 def objective(config):  
     device = torch.device('cuda' if torch.cuda.
                       is_available() else 'cpu')
     
-    print('Device available is', device)
-    
 
-    score = train_model(config) # Have training loop in here that outputs loss of model
+    score = train_model_hydra(config) # Have training loop in here that outputs loss of model
     return {"val_loss": score}
 
-basin = 'stehekin_r_at_stehekin'
+
+# Can use fractions of GPU
+tuner = tune.Tuner(tune.with_resources(tune.with_parameters(objective), resources={"cpu": 9/10, "gpu": 0}), param_space=config_space) 
+
+results = tuner.fit()
+best_config = results.get_best_result(metric="val_loss", mode="min").config
+print(best_config)
+file_path = f"/data/Hydra_Work/Tuning/Config_Text/Hydral_Model_best_config.txt"
+
+# Open the file in write mode and save the configuration
+with open(file_path, "w") as f:
+    f.write(str(best_config))
+
+print("Best configuration saved to:", file_path)
 
 #, search_alg = optuna_search
 optuna_tune_config = tune.TuneConfig(scheduler=asha_scheduler)
