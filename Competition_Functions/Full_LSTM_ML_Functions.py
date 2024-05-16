@@ -236,7 +236,7 @@ def Prepare_Batch(Dates, indices):
     final_forcing_distance = 7 #np.random.choice(choices)
     return batch_dates, final_forcing_distance
 
-def Prepare_Basin(basins, climatological_flows, static_indices, final_forcing_distance, basin_usage_counter, basin_count):
+def Prepare_Basin(basins, climatological_flows, static_indices, final_forcing_distance, basin_usage_counter = defaultdict(int), basin_count = defaultdict(int)):
     basin = np.random.choice(basins)
     climatological_basin_flow = climatological_flows[basin]
     static_basin_indices = pd.DataFrame(static_indices.loc[basin]).T
