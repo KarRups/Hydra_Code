@@ -150,8 +150,7 @@ class SumPinballLoss(nn.Module):
         # Initialize a list to store losses for each output
         output_losses = []
         observed = observed.squeeze()
-
-        #modeled = torch.sum(modeled, dim = 1)
+        # modeled = torch.sum(modeled, dim = 1)
  
         # Calculate the quantile loss for each output and quantile
         for i, quantile in enumerate(self.quantiles):
