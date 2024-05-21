@@ -154,7 +154,7 @@ class SumPinballLoss(nn.Module):
  
         # Calculate the quantile loss for each output and quantile
         for i, quantile in enumerate(self.quantiles):
-
+            
             modeled_quantile = modeled[...,i]
             loss = torch.nanmean(torch.max(quantile * torch.nansum(observed - modeled_quantile), (quantile - 1) * torch.nansum(observed - modeled_quantile) ))
 
@@ -335,6 +335,7 @@ def Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, F
         Basin_Head_Output, _ = model_heads[f'{basin}'](H_List_torch, Head_Input)
         General_Head_Output, _ = General_Hydra_Head(No_Flow_List_torch, Head_Input)
         
+    print(Basin_Head_Output)
     return Basin_Head_Output, General_Head_Output
 
 # This should be fine. but maybe isn't with how models are defined
@@ -345,6 +346,7 @@ def Calculate_Losses_and_Predictions(Output, Climatology_list_torch, in_season_l
 
     Guesses = torch.sum(Guesses, dim=1)
     Climatology_Guesses = torch.sum(Climatology_Guesses, dim=1)
+
     Season_Flow_List_torch = torch.sum(Season_Flow_List_torch, dim=1)
 
     loss = criterion(Season_Flow_List_torch, Guesses)
@@ -494,12 +496,14 @@ def No_Body_Model_Run(All_Dates, basins, model_heads, era5, daily_flow, climatol
                     Basin_Head_Output, _ = model_heads[f'{basin}'](H_List_torch, Forcing_List_torch)
                 else:
                     Basin_Head_Output, _ = model_heads(H_List_torch, Forcing_List_torch)
+                Basin_Head_Output = Basin_Head_Output[0, 6, :]
+                
 
                 loss, Climatology_loss = Calculate_Losses_and_Predictions(Basin_Head_Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size)
                 # Attempt to standardise by difficulty?
                 percentage_loss = loss/Climatology_loss
                 if Train_Mode:
-                    loss.backward()
+                    percentage_loss.backward()
                     optimizer.step() 
                     scheduler.step()
 
