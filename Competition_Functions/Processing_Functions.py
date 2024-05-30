@@ -89,10 +89,10 @@ def process_forecast_date(flow, history, climate_indices, forecast_datetime, off
     # For google LSTM change this so start+date is just first available date
     start_date = forecast_datetime - pd.DateOffset(days=offset)
     Past_Flow = flow.loc[start_date:forecast_datetime - pd.DateOffset(days=1)]['daily_flow']
-    Past_Climatology = climate_indices.loc[start_date:forecast_datetime - pd.DateOffset(days=1)]
+    #Past_Climatology = climate_indices.loc[start_date:forecast_datetime - pd.DateOffset(days=1)]
 
     History_H0 = pd.merge(History_H0, Past_Flow, left_index=True, right_index=True, how='inner')
-    History_H0 = pd.merge(History_H0, Past_Climatology, left_index=True, right_index=True, how='inner')
+    #History_H0 = pd.merge(History_H0, Past_Climatology, left_index=True, right_index=True, how='inner')
 
 
 

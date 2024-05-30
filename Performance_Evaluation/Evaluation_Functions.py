@@ -188,9 +188,10 @@ def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, 
         else:
             model.eval()
             Basin_Head_Output, _ = model(H_List_torch, Forcing_List_torch)
-    
-        Basin_Head_Guess = Basin_Head_Output * in_season_list_torch.unsqueeze(-1)
-        Basin_Head_Guess = torch.sum(Basin_Head_Guess, dim=1).detach().cpu().numpy()
+
+        Basin_Head_Output = Basin_Head_Output[0,0,:]
+        #Basin_Head_Guess = Basin_Head_Output * in_season_list_torch.unsqueeze(-1)
+        #Basin_Head_Guess = torch.sum(Basin_Head_Guess, dim=1).detach().cpu().numpy()
         
         Climatology_Guess = Climatology_list_torch * in_season_list_torch.unsqueeze(-1)   
         Climatology_Guess = torch.sum(Climatology_Guess, dim=1).detach().cpu().numpy()

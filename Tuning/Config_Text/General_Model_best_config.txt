@@ -1,1 +1,1 @@
-{'hidden_size': 128, 'num_layers': 1, 'dropout': 0.0, 'bidirectional': False, 'learning_rate': 0.001}
+{'hidden_size': 128, 'num_layers': 1, 'dropout': 0.1, 'bidirectional': False, 'learning_rate': 0.0005, 'test_year': 2006}

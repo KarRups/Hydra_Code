@@ -76,6 +76,7 @@ class Forecast_LSTM_Block(nn.Module):
         return out
     
 class Google_LSTMModel(nn.Module):
+  # Can easily remove the reference to the forecast to make it a fully hindcast system
   def __init__(self, hindcast,forecast):
     super(Google_LSTMModel, self).__init__()
     self.hindcast = hindcast
@@ -282,7 +283,7 @@ def Process_Seasonal_Forecast(seasonal_forecasts, basin, forecast_datetime, end_
 
     climate_values = climatological_basin_flow[forecast_datetime.dayofyear + 1 : end_season_date.dayofyear + 1].values
     climate_columns = ['Climatology_10', 'Climatology_50', 'Climatology_90']
-    Seasonal_Forecasts[climate_columns] = climate_values
+    #Seasonal_Forecasts[climate_columns] = climate_values
 
     Seasonal_Forecasts['In_Season'] = False
     Seasonal_Forecasts.loc[(Seasonal_Forecasts.index > start_forecast_season_date) & (Seasonal_Forecasts.index <= end_season_date), 'In_Season'] = True
@@ -335,17 +336,17 @@ def Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, F
         Basin_Head_Output, _ = model_heads[f'{basin}'](H_List_torch, Head_Input)
         General_Head_Output, _ = General_Hydra_Head(No_Flow_List_torch, Head_Input)
         
-    print(Basin_Head_Output)
     return Basin_Head_Output, General_Head_Output
 
 # This should be fine. but maybe isn't with how models are defined
 def Calculate_Losses_and_Predictions(Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size):
-    #Guesses = (Output + Climatology_list_torch[...,1].view(batch_size, len(Season_Flow), 1)) * in_season_list_torch.unsqueeze(-1)
-    Guesses = Output * in_season_list_torch.unsqueeze(-1)
-    Climatology_Guesses = Climatology_list_torch * in_season_list_torch.unsqueeze(-1)
+    #Guesses = Output * in_season_list_torch.unsqueeze(-1)
+    #Guesses = torch.sum(Guesses, dim=1)
 
-    Guesses = torch.sum(Guesses, dim=1)
+    Climatology_Guesses = Climatology_list_torch * in_season_list_torch.unsqueeze(-1)
     Climatology_Guesses = torch.sum(Climatology_Guesses, dim=1)
+    Guesses = Output.unsqueeze(0)
+
 
     Season_Flow_List_torch = torch.sum(Season_Flow_List_torch, dim=1)
 
@@ -355,7 +356,7 @@ def Calculate_Losses_and_Predictions(Output, Climatology_list_torch, in_season_l
     return loss, Climatology_loss
 
 
-def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, era5, daily_flow, climatological_flows, climate_indices, seasonal_forecasts, static_indices, optimizer, scheduler, criterion, early_stopper = None, n_epochs = 20, batch_size = 2, group_lengths = [89, 90, 91, 92] , Train_Mode=True, device = 'cpu', feed_forcing = True):
+def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, era5, daily_flow, climatological_flows, climate_indices, seasonal_forecasts, static_indices, optimizer, scheduler, criterion, early_stopper = None, n_epochs = 20, batch_size = 2, group_lengths = [89, 90, 91, 92] , Train_Mode=True, device = 'cpu', feed_forcing = True, spec_multiplier = 1):
     basin_usage_counter = defaultdict(int)
     basin_count = defaultdict(int)
 
@@ -408,21 +409,25 @@ def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, er
 
                 optimizer.zero_grad()   
                 Basin_Head_Output, General_Head_Output = Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, Forcing_List_torch, No_Flow_List_torch, H_List_torch, feed_forcing)
-
+                Basin_Head_Output = Basin_Head_Output[0, 0, :]
+                General_Head_Output = General_Head_Output[0, 0, :]
+    
                 loss_general, Climatology_loss = Calculate_Losses_and_Predictions(General_Head_Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size)
                 loss_specific, _ = Calculate_Losses_and_Predictions(Basin_Head_Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size)
 
                 if Train_Mode:
-                    loss = loss_general + loss_specific
+                    loss = loss_general + spec_multiplier*loss_specific
                     percentage_loss = loss/Climatology_loss
-                    loss.backward()
+                    percentage_loss.backward()
                     optimizer.step() 
-                    scheduler.step()
+                    
 
                 specific_loss += loss_specific.item() 
                 general_loss += loss_general.item()
                 Climate_loss += Climatology_loss.item()
 
+            if Train_Mode:
+                scheduler.step()
             if early_stopper != None:               
                 # Maybe I should instead define the earlystopper by how its comparison with climatology   
                 if early_stopper.early_stop(0.5*(specific_loss + general_loss) - Climate_loss):
@@ -492,11 +497,12 @@ def No_Body_Model_Run(All_Dates, basins, model_heads, era5, daily_flow, climatol
 
                 optimizer.zero_grad()   
 
+
                 if specialised:
                     Basin_Head_Output, _ = model_heads[f'{basin}'](H_List_torch, Forcing_List_torch)
-                else:
-                    Basin_Head_Output, _ = model_heads(H_List_torch, Forcing_List_torch)
-                Basin_Head_Output = Basin_Head_Output[0, 6, :]
+                else: # Probably I shouldn't have flow in here? 
+                    Basin_Head_Output, _ = model_heads(No_Flow_List_torch, Forcing_List_torch)
+                Basin_Head_Output = Basin_Head_Output[0, 0, :]
                 
 
                 loss, Climatology_loss = Calculate_Losses_and_Predictions(Basin_Head_Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size)
