@@ -35,15 +35,15 @@ class Hindcast_LSTM_Block(nn.Module):
         # Map H0_sequences and H0_static to the appropriate sizes
         # Is this implementation of history doing anything
         
-        h0 = torch.zeros(self.num_layers * self.No_Directions, self.hidden_size).to(x.device)
-        c0 = torch.zeros(self.num_layers * self.No_Directions, self.hidden_size).to(x.device)
+        # h0 = torch.zeros(self.num_layers * self.No_Directions, self.hidden_size).to(x.device)
+        # c0 = torch.zeros(self.num_layers * self.No_Directions, self.hidden_size).to(x.device)
 
         if len(np.shape(x)) == 3:
-            h0 = h0.view( self.num_layers * self.No_Directions, x.size(0), self.hidden_size).to(x.device)
-            c0 = c0.view( self.num_layers * self.No_Directions, x.size(0), self.hidden_size).to(x.device)
-        # else:
-        #     h0 = h0.view( self.num_layers * self.No_Directions, self.hidden_size).to(x.device)
-        #     c0 = torch.zeros(self.num_layers * self.No_Directions, self.hidden_size).to(x.device)
+            h0 = torch.zeros( self.num_layers * self.No_Directions, x.size(0), self.hidden_size).to(x.device)
+            c0 = torch.zeros( self.num_layers * self.No_Directions, x.size(0), self.hidden_size).to(x.device)
+        else:
+            h0 = torch.zeros( self.num_layers * self.No_Directions, self.hidden_size).to(x.device)
+            c0 = torch.zeros(self.num_layers * self.No_Directions, self.hidden_size).to(x.device)
             
         out, (hn, cn) = self.lstm(x, (h0, c0)) 
         out = self.dropout(out)
@@ -76,28 +76,27 @@ class Forecast_LSTM_Block(nn.Module):
         return out
     
 class Google_LSTMModel(nn.Module):
-  # Can easily remove the reference to the forecast to make it a fully hindcast system
-  def __init__(self, hindcast,forecast):
+  def __init__(self, hindcast):
     super(Google_LSTMModel, self).__init__()
     self.hindcast = hindcast
-    self.forecast = forecast
+    # self.forecast = forecast
     
-  def forward(self, history, forecasts):
+  def forward(self, history):
     
     # get states from hindcast model
     # need to decide whether the head recieves the raw history or an encoding of it
     hind_out, hn,cn = self.hindcast(history)
     
     # get forecasts from forecast model
-    out = self.forecast(forecasts, hn,cn)
-    return out, hind_out
+    #out = self.forecast(forecasts, hn,cn)
+    return hind_out #, hind_out
 
 def Google_Model_Block(hindcast_input_size, forecast_input_size, hindcast_output_size, forecast_output_size, hidden_size, num_layers, device, dropout = 0.0, bidirectional = False):
     # For now dropout and bidirectional aren't included here, can change that down the line
     # output_size for Hindcast doesn't actually matter
     Hindcast = Hindcast_LSTM_Block(hindcast_input_size, hidden_size, num_layers, hindcast_output_size, dropout = dropout, bidirectional = bidirectional)
-    Forecast = Forecast_LSTM_Block(forecast_input_size, hidden_size, num_layers, forecast_output_size, dropout = dropout, bidirectional = bidirectional)
-    Block = Google_LSTMModel(Hindcast, Forecast)
+    #Forecast = Forecast_LSTM_Block(forecast_input_size, hidden_size, num_layers, forecast_output_size, dropout = dropout, bidirectional = bidirectional)
+    Block = Google_LSTMModel(Hindcast)
     Block.to(device)
 
     return Block
@@ -107,9 +106,9 @@ def Specific_Heads(basins, hindcast_input_size, forecast_input_size, hindcast_ou
     model_heads = {}
     for basin in basins:
         basin_hindcast = Hindcast_LSTM_Block(hindcast_input_size, hidden_size, num_layers, hindcast_output_size, dropout = dropout, bidirectional = bidirectional)
-        basin_forecast = Forecast_LSTM_Block(forecast_input_size, hidden_size, num_layers, forecast_output_size, dropout = dropout, bidirectional = bidirectional)
+        #basin_forecast = Forecast_LSTM_Block(forecast_input_size, hidden_size, num_layers, forecast_output_size, dropout = dropout, bidirectional = bidirectional)
     
-        model_heads[f'{basin}'] = Google_LSTMModel(basin_hindcast, basin_forecast)
+        model_heads[f'{basin}'] = Google_LSTMModel(basin_hindcast)
         model_heads[f'{basin}'].to(device)
     return model_heads
 
@@ -155,10 +154,9 @@ class SumPinballLoss(nn.Module):
  
         # Calculate the quantile loss for each output and quantile
         for i, quantile in enumerate(self.quantiles):
-            
             modeled_quantile = modeled[...,i]
-            loss = torch.nanmean(torch.max(quantile * torch.nansum(observed - modeled_quantile), (quantile - 1) * torch.nansum(observed - modeled_quantile) ))
-
+            errors = torch.max(quantile * (observed - modeled_quantile), (quantile - 1) *( observed - modeled_quantile))
+            loss = torch.nanmean(errors)
             
         
             output_losses.append(loss)
@@ -308,11 +306,11 @@ def Calculate_Flow_Data(daily_flow, climatological_basin_flow, basin, start_seas
     return Pre_Flow, True_Flow, Season_Flow, Climatology
 
 def Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, Forcing_List_torch, No_Flow_List_torch, H_List_torch, feed_forcing):
-    Body_Output, Body_Hindcast_Output = Hydra_Body(No_Flow_List_torch, Forcing_List_torch) 
+    Body_Output = Hydra_Body(No_Flow_List_torch) # , Forcing_List_torch 
     Head_Input = Body_Output
 
     if feed_forcing:
-        Head_Input = torch.cat((Head_Input, Forcing_List_torch), dim=-1)
+        Head_Input = torch.cat((Head_Input), dim=-1) # , Forcing_List_torch
 
     # Want to torch.cat relevant variables on top
     
@@ -327,10 +325,10 @@ def Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, F
         remaining_columns = H_List_torch[:,  :, remaining_columns_indices]
 
         # Concatenate remaining_rows with Body_Hindcast_Output
-        Body_Hindcast_Output_Extra = torch.cat((Body_Hindcast_Output, remaining_columns), dim=2)
+        Body_Output_Extra = torch.cat((Body_Output, remaining_columns), dim=2)
 
-        Basin_Head_Output, _ = model_heads[f'{basin}'](Body_Hindcast_Output_Extra, Head_Input)
-        General_Head_Output, _ = General_Hydra_Head(Body_Hindcast_Output, Head_Input)
+        Basin_Head_Output = model_heads[f'{basin}'](Body_Output_Extra)
+        General_Head_Output = General_Hydra_Head(Head_Input)
 
     else:
         Basin_Head_Output, _ = model_heads[f'{basin}'](H_List_torch, Head_Input)
@@ -409,9 +407,9 @@ def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, er
 
                 optimizer.zero_grad()   
                 Basin_Head_Output, General_Head_Output = Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, Forcing_List_torch, No_Flow_List_torch, H_List_torch, feed_forcing)
-                Basin_Head_Output = Basin_Head_Output[0, 0, :]
-                General_Head_Output = General_Head_Output[0, 0, :]
-    
+                Basin_Head_Output = Basin_Head_Output[:, -1, :]
+                General_Head_Output = General_Head_Output[:, -1, :]
+                    
                 loss_general, Climatology_loss = Calculate_Losses_and_Predictions(General_Head_Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size)
                 loss_specific, _ = Calculate_Losses_and_Predictions(Basin_Head_Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size)
 
@@ -420,6 +418,7 @@ def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, er
                     percentage_loss = loss/Climatology_loss
                     percentage_loss.backward()
                     optimizer.step() 
+                
                     
 
                 specific_loss += loss_specific.item() 
@@ -453,7 +452,8 @@ def No_Body_Model_Run(All_Dates, basins, model_heads, era5, daily_flow, climatol
 
     # Set models to train mode if Train_Mode is True, else set to evaluation mode
     if specialised:
-        [model_heads[f'{basin}'].train(Train_Mode) for basin in basins]
+        #[model_heads[f'{basin}'].train(Train_Mode) for basin in basins]
+        model_heads.train(Train_Mode)
     else:
         model_heads.train(Train_Mode)
     try:
@@ -499,11 +499,13 @@ def No_Body_Model_Run(All_Dates, basins, model_heads, era5, daily_flow, climatol
 
 
                 if specialised:
-                    Basin_Head_Output, _ = model_heads[f'{basin}'](H_List_torch, Forcing_List_torch)
+                    Basin_Head_Output = model_heads(H_List_torch) #model_heads[f'{basin}'](H_List_torch, Forcing_List_torch)
                 else: # Probably I shouldn't have flow in here? 
-                    Basin_Head_Output, _ = model_heads(No_Flow_List_torch, Forcing_List_torch)
-                Basin_Head_Output = Basin_Head_Output[0, 0, :]
+                    Basin_Head_Output = model_heads(No_Flow_List_torch)
+                    #Basin_Head_Output = model_heads(H_List_torch)
+                Basin_Head_Output = Basin_Head_Output[:, -1, :]
                 
+
 
                 loss, Climatology_loss = Calculate_Losses_and_Predictions(Basin_Head_Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size)
                 # Attempt to standardise by difficulty?

@@ -1,1 +1,1 @@
-{'hidden_size': 128, 'num_layers': 1, 'dropout': 0.1, 'bidirectional': False, 'learning_rate': 0.001, 'basin': 'merced_river_yosemite_at_pohono_bridge', 'test_year': 2016}
+{'hidden_size': 128, 'num_layers': 1, 'dropout': 0.1, 'bidirectional': False, 'learning_rate': 0.01, 'basin': 'animas_r_at_durango', 'test_year': 2000}
