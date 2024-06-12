@@ -3,7 +3,7 @@ import pickle
 
 
 # Define the base directory
-base_dir = "/data/Hydra_Work/No_Forecast_Validation_Models"
+base_dir = "/data/Hydra_Work/3_Day_No_Forecast_Validation_Models"
 
 # Define the set of Val_Years and Models
 val_years = list(range(2000, 2024, 2))  # Even years between 2000 and 2024

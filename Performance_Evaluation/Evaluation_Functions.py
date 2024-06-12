@@ -10,7 +10,7 @@ from Processing_Functions import process_forecast_date, process_seasonal_forecas
 from ML_Functions import Add_Static_To_Series, Process_History, Process_Seasonal_Forecast
 from Full_LSTM_ML_Functions import Prepare_Basin, Get_Relevant_Dates, Process_History, Process_Seasonal_Forecast, Calculate_Flow_Data, Calculate_Head_Outputs
 
-def test_weekly_performance_hydra(basin, Hydra_Body, General_Hydra_Head, model_heads, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_indices, device, end_season_date, start_season_date,  furthest_distance=120, group_lengths = [7], feed_forcing = True):
+def test_weekly_performance_hydra(basin, Hydra_Body, General_Hydra_Head, model_heads, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_indices, device, end_season_date, start_season_date,  furthest_distance=120, group_lengths = [1], feed_forcing = True):
     """
     Test the performance of a hydrological model at predicting weekly discharge.
 
@@ -29,7 +29,7 @@ def test_weekly_performance_hydra(basin, Hydra_Body, General_Hydra_Head, model_h
         end_season_date (str): End date of the season (format: 'YYYY-MM-DD').
         start_season_date (str): Start date of the season (format: 'YYYY-MM-DD').
         furthest_distance (int): Number of days into the past to consider (default: 120).
-        group_lengths (list): List of integers specifying the lengths of data groups (default: [7]).
+        group_lengths (list): List of integers specifying the lengths of data groups (default: [1]).
         feed_forcing (bool): Whether to feed forcing data to the model (default: True).
 
     Returns:
@@ -40,15 +40,15 @@ def test_weekly_performance_hydra(basin, Hydra_Body, General_Hydra_Head, model_h
     General_Hydra_Head.eval()
     model_heads[f'{basin}'].eval()
 
-    final_forcing_distance = 7     
+    final_forcing_distance = 3    
     _, climatological_basin_flow, static_basin_indices, _ = Prepare_Basin([basin], climatological_flows, static_indices, final_forcing_distance)
 
     # Convert date strings to datetime objects
     end_season_date = pd.to_datetime(end_season_date)
     start_season_date = pd.to_datetime(start_season_date)
 
-    # Define the dates we make forecasts as being from the start of what we said to 7 days before the end, with a daily frequency
-    batch_dates = pd.date_range(start = start_season_date, end = end_season_date - pd.DateOffset(days = 6), freq='D')
+    # Define the dates we make forecasts as being from the start of what we said to 1 days before the end, with a daily frequency
+    batch_dates = pd.date_range(start = start_season_date, end = end_season_date - pd.DateOffset(days = 0), freq='D')
     
     H_List, No_Flow_List, Forcing_List, True_Flow_List, Pre_Flow_List, in_season_list, Season_Flow_List = [[] for _ in range(7)]
     Climatology_list = []
@@ -86,13 +86,17 @@ def test_weekly_performance_hydra(basin, Hydra_Body, General_Hydra_Head, model_h
         Climatology_list_torch = torch.stack(Climatology_list, dim = 0)
 
         Basin_Head_Output, General_Head_Output = Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, Forcing_List_torch, No_Flow_List_torch, H_List_torch, feed_forcing)
-    
-        Basin_Head_Guess = Basin_Head_Output * in_season_list_torch.unsqueeze(-1)
-        Basin_Head_Guess = torch.sum(Basin_Head_Guess, dim=1).detach().cpu().numpy()
+           
+        Basin_Head_Guess = Basin_Head_Output[:,-1,:]   
+                                   
+        #Basin_Head_Guess = Basin_Head_Output * in_season_list_torch.unsqueeze(-1)
+        Basin_Head_Guess = Basin_Head_Guess.detach().cpu().numpy()
         
-        General_Head_Guess = General_Head_Output * in_season_list_torch.unsqueeze(-1)
-        General_Head_Guess = torch.sum(General_Head_Guess, dim=1).detach().cpu().numpy()
-        Climatology_Guess = Climatology_list_torch * in_season_list_torch.unsqueeze(-1)   
+        General_Head_Guess = General_Head_Output[:, -1,:]
+        # General_Head_Guess = General_Head_Output * in_season_list_torch.unsqueeze(-1)
+        General_Head_Guess = General_Head_Guess.detach().cpu().numpy()
+        
+        Climatology_Guess = Climatology_list_torch  # * in_season_list_torch.unsqueeze(-1)   
         Climatology_Guess = torch.sum(Climatology_Guess, dim=1).detach().cpu().numpy()
         
         Truth = torch.sum(Season_Flow_List_torch, dim=1).detach().cpu().numpy()
@@ -109,7 +113,7 @@ def test_weekly_performance_hydra(basin, Hydra_Body, General_Hydra_Head, model_h
 
 
 
-def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_indices, device, end_season_date, start_season_date,  furthest_distance=120, group_lengths = [7], feed_forcing = True, specialised = False):
+def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_indices, device, end_season_date, start_season_date,  furthest_distance=120, group_lengths = [1], feed_forcing = True, specialised = False, Flow = True):
     """
     Test the performance of a hydrological model at predicting weekly discharge.
 
@@ -128,7 +132,7 @@ def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, 
         end_season_date (str): End date of the season (format: 'YYYY-MM-DD').
         start_season_date (str): Start date of the season (format: 'YYYY-MM-DD').
         furthest_distance (int): Number of days into the past to consider (default: 120).
-        group_lengths (list): List of integers specifying the lengths of data groups (default: [7]).
+        group_lengths (list): List of integers specifying the lengths of data groups (default: [1]).
         feed_forcing (bool): Whether to feed forcing data to the model (default: True).
 
     Returns:
@@ -137,15 +141,15 @@ def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, 
     """
     
 
-    final_forcing_distance = 7     
+    final_forcing_distance = 3    
     _, climatological_basin_flow, static_basin_indices, _ = Prepare_Basin([basin], climatological_flows, static_indices, final_forcing_distance)
 
     # Convert date strings to datetime objects
     end_season_date = pd.to_datetime(end_season_date)
     start_season_date = pd.to_datetime(start_season_date)
 
-    # Define the dates we make forecasts as being from the start of what we said to 7 days before the end, with a daily frequency
-    batch_dates = pd.date_range(start = start_season_date, end = end_season_date - pd.DateOffset(days = 6), freq='D')
+    # Define the dates we make forecasts as being from the start of what we said to 1 days before the end, with a daily frequency
+    batch_dates = pd.date_range(start = start_season_date, end = end_season_date - pd.DateOffset(days = 0), freq='D')
     
     H_List, No_Flow_List, Forcing_List, True_Flow_List, Pre_Flow_List, in_season_list, Season_Flow_List = [[] for _ in range(7)]
     Climatology_list = []
@@ -167,7 +171,7 @@ def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, 
     
         Seasonal_Forecasts_tensor, in_season_mask = Process_Seasonal_Forecast(seasonal_forecasts, basin, forecast_datetime, end_season_date, static_basin_indices, climatological_basin_flow, No_Flow_History_H0, start_forecast_season_date, device)
         Pre_Flow, True_Flow, Season_Flow, Climatology = Calculate_Flow_Data(daily_flow, climatological_basin_flow, basin, start_season_date, forecast_datetime, end_season_date, in_season_mask, device)
-
+       
         History_H0_Tensor = torch.tensor(History_H0.values.astype(np.float32)).to(device)
         No_Flow_History_H0_Tensor = torch.tensor(No_Flow_History_H0.values.astype(np.float32)).to(device)
 
@@ -184,16 +188,19 @@ def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, 
 
         if specialised:
             model[f'{basin}'].eval()
-            Basin_Head_Output, _ = model[f'{basin}'](H_List_torch, Forcing_List_torch)
+            Basin_Head_Output = model[f'{basin}'](H_List_torch)
         else:
             model.eval()
-            Basin_Head_Output, _ = model(H_List_torch, Forcing_List_torch)
+            if Flow == False:
+                Basin_Head_Output = model(No_Flow_List_torch)
+            else:
+                Basin_Head_Output = model(H_List_torch)
 
-        Basin_Head_Output = Basin_Head_Output[0,0,:]
+        Basin_Head_Guess = Basin_Head_Output[:,-1,:]
         #Basin_Head_Guess = Basin_Head_Output * in_season_list_torch.unsqueeze(-1)
-        #Basin_Head_Guess = torch.sum(Basin_Head_Guess, dim=1).detach().cpu().numpy()
-        
-        Climatology_Guess = Climatology_list_torch * in_season_list_torch.unsqueeze(-1)   
+        Basin_Head_Guess = Basin_Head_Guess.detach().cpu().numpy()
+
+        Climatology_Guess = Climatology_list_torch #* in_season_list_torch.unsqueeze(-1)   
         Climatology_Guess = torch.sum(Climatology_Guess, dim=1).detach().cpu().numpy()
         
         Truth = torch.sum(Season_Flow_List_torch, dim=1).detach().cpu().numpy()
@@ -202,7 +209,7 @@ def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, 
         Climatology_guesses_list.append(Climatology_Guess)
         Basin_head_guesses_list.append(Basin_Head_Guess)
         Truth_list.append(Truth)
-        
+  
  
     
     return Climatology_guesses_list, Basin_head_guesses_list, Truth_list

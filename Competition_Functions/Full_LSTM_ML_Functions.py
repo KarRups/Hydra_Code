@@ -162,7 +162,7 @@ class SumPinballLoss(nn.Module):
             output_losses.append(loss)
 
         # Sum the losses for each output and quantile
-        overall_loss = sum(output_losses)
+        overall_loss = sum(output_losses) 
         
         return overall_loss
     
@@ -231,7 +231,8 @@ def Prepare_Batch(Dates, indices):
     choices = [min_day]* int(proportion_first_value * 100) + [random_day]* int( (1 - proportion_first_value) * 100)
     
     # Changed to 7 to do 7 day ahead prediction
-    final_forcing_distance = 7 #np.random.choice(choices)
+    final_forcing_distance = 3 #np.random.choice(choices)
+    
     return batch_dates, final_forcing_distance
 
 def Prepare_Basin(basins, climatological_flows, static_indices, final_forcing_distance, basin_usage_counter = defaultdict(int), basin_count = defaultdict(int)):
@@ -416,7 +417,7 @@ def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, er
                 if Train_Mode:
                     loss = loss_general + spec_multiplier*loss_specific
                     percentage_loss = loss/Climatology_loss
-                    percentage_loss.backward()
+                    loss.backward()
                     optimizer.step() 
                 
                     
@@ -511,7 +512,7 @@ def No_Body_Model_Run(All_Dates, basins, model_heads, era5, daily_flow, climatol
                 # Attempt to standardise by difficulty?
                 percentage_loss = loss/Climatology_loss
                 if Train_Mode:
-                    percentage_loss.backward()
+                    loss.backward()
                     optimizer.step() 
                     scheduler.step()
 
