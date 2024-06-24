@@ -1,1 +1,1 @@
-{'hidden_size': 128, 'num_layers': 1, 'dropout': 0.1, 'bidirectional': False, 'learning_rate': 0.001, 'test_year': 2008}
+{'hidden_size': 64, 'num_layers': 2, 'dropout': 0.1, 'bidirectional': False, 'learning_rate': 0.001, 'batch_size': 128, 'p': 0.5, 'test_year': 2022}

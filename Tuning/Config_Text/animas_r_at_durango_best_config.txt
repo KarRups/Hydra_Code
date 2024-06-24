@@ -1,1 +1,1 @@
-{'hidden_size': 16, 'num_layers': 1, 'dropout': 0.4, 'bidirectional': False, 'learning_rate': 0.001}
+{'hidden_size': 128, 'num_layers': 1, 'dropout': 0, 'bidirectional': False, 'learning_rate': 0.01, 'basin': 'animas_r_at_durango', 'test_year': 2022}

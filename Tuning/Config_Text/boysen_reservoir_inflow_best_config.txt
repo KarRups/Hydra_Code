@@ -1,1 +1,1 @@
-{'hidden_size': 128, 'num_layers': 1, 'dropout': 0.1, 'bidirectional': False, 'learning_rate': 0.01, 'basin': 'snake_r_nr_heise', 'test_year': 2000}
+{'hidden_size': 64, 'num_layers': 1, 'dropout': 0, 'bidirectional': False, 'learning_rate': 0.01, 'basin': 'pecos_r_nr_pecos', 'test_year': 2004}

@@ -66,7 +66,7 @@ def test_weekly_performance_hydra(basin, Hydra_Body, General_Hydra_Head, model_h
         start_season_date, start_forecast_season_date, end_season_date = Get_Relevant_Dates(forecast_datetime, final_forcing_distance, group_lengths)
         
         era5_basin = era5[f'{basin}_{forecast_datetime.year}']
-        History_H0, No_Flow_History_H0, Flat_H0_tensor, Flat_No_Flow_H0_tensor = Process_History(daily_flow[basin], era5_basin, climate_indices, forecast_datetime, device)
+        History_H0, No_Flow_History_H0, Flat_H0_tensor, Flat_No_Flow_H0_tensor = Process_History(daily_flow[basin], era5_basin, static_basin_indices, climate_indices, forecast_datetime, device)
     
         Seasonal_Forecasts_tensor, in_season_mask = Process_Seasonal_Forecast(seasonal_forecasts, basin, forecast_datetime, end_season_date, static_basin_indices, climatological_basin_flow, No_Flow_History_H0, start_forecast_season_date, device)
         Pre_Flow, True_Flow, Season_Flow, Climatology = Calculate_Flow_Data(daily_flow, climatological_basin_flow, basin, start_season_date, forecast_datetime, end_season_date, in_season_mask, device)
@@ -113,7 +113,7 @@ def test_weekly_performance_hydra(basin, Hydra_Body, General_Hydra_Head, model_h
 
 
 
-def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_indices, device, end_season_date, start_season_date,  furthest_distance=120, group_lengths = [1], feed_forcing = True, specialised = False, Flow = True):
+def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_indices, device, end_season_date, start_season_date,  furthest_distance=120, group_lengths = [1], feed_forcing = True, specialised = False, Flow = True, p = None):
     """
     Test the performance of a hydrological model at predicting weekly discharge.
 
@@ -167,7 +167,7 @@ def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, 
         start_season_date, start_forecast_season_date, end_season_date = Get_Relevant_Dates(forecast_datetime, final_forcing_distance, group_lengths)
         
         era5_basin = era5[f'{basin}_{forecast_datetime.year}']
-        History_H0, No_Flow_History_H0, Flat_H0_tensor, Flat_No_Flow_H0_tensor = Process_History(daily_flow[basin], era5_basin, climate_indices, forecast_datetime, device)
+        History_H0, No_Flow_History_H0, Flat_H0_tensor, Flat_No_Flow_H0_tensor = Process_History(daily_flow[basin], era5_basin, static_basin_indices, climate_indices, forecast_datetime, device)
     
         Seasonal_Forecasts_tensor, in_season_mask = Process_Seasonal_Forecast(seasonal_forecasts, basin, forecast_datetime, end_season_date, static_basin_indices, climatological_basin_flow, No_Flow_History_H0, start_forecast_season_date, device)
         Pre_Flow, True_Flow, Season_Flow, Climatology = Calculate_Flow_Data(daily_flow, climatological_basin_flow, basin, start_season_date, forecast_datetime, end_season_date, in_season_mask, device)
@@ -185,16 +185,27 @@ def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, 
             torch.stack(lst, dim=0) for lst in [H_List, No_Flow_List, Forcing_List, True_Flow_List, Pre_Flow_List, in_season_list, Season_Flow_List] ]
         
         Climatology_list_torch = torch.stack(Climatology_list, dim = 0)
-
+        
         if specialised:
             model[f'{basin}'].eval()
-            Basin_Head_Output = model[f'{basin}'](H_List_torch)
+            Basin_Head_Output = model[f'{basin}'](H_List_torch) # H_List_torch
         else:
             model.eval()
-            if Flow == False:
-                Basin_Head_Output = model(No_Flow_List_torch)
+            if p is not None:
+                zero_row = torch.zeros(No_Flow_List_torch.size(0), No_Flow_List_torch.size(1), 1).to(device)
+                if p == 0:
+                    negative_row = torch.full((No_Flow_List_torch.size(0), No_Flow_List_torch.size(1), 1), -100.0).to(device)
+                    New_No_Flow_List_torch = torch.cat([No_Flow_List_torch, negative_row, zero_row], dim=2)
+                    Basin_Head_Output = model(New_No_Flow_List_torch)
+                else:
+                    one_row = torch.ones(H_List_torch.size(0), H_List_torch.size(1), 1).to(device)
+                    New_H_List_torch = torch.cat([H_List_torch, one_row], dim=2)
+                    Basin_Head_Output = model(New_H_List_torch)
             else:
-                Basin_Head_Output = model(H_List_torch)
+                if Flow == False:
+                    Basin_Head_Output = model(No_Flow_List_torch)
+                else:
+                    Basin_Head_Output = model(H_List_torch)
 
         Basin_Head_Guess = Basin_Head_Output[:,-1,:]
         #Basin_Head_Guess = Basin_Head_Output * in_season_list_torch.unsqueeze(-1)
@@ -240,7 +251,7 @@ def test_performance_for_basin_and_season(basin, Hydra_Body, General_Hydra_Head,
         era5_basin = era5[f'{basin}_{forecast_datetime.year}']
 
         #Seasonal_Forecasts = process_seasonal_forecasts(seasonal_forecasts, basin, forecast_datetime, end_season_date, columns_to_drop=None)        
-        History_H0, No_Flow_History_H0, Flat_H0_tensor, Flat_No_Flow_H0_tensor = Process_History(daily_flow[basin], era5_basin, climate_indices, forecast_datetime, device)
+        History_H0, No_Flow_History_H0, Flat_H0_tensor, Flat_No_Flow_H0_tensor = Process_History(daily_flow[basin], era5_basin, static_basin_indices, climate_indices, forecast_datetime, device)
         Seasonal_Forecasts_tensor, in_season_mask = Process_Seasonal_Forecast(seasonal_forecasts, basin, forecast_datetime, end_season_date, static_basin_indices, climatological_basin_flow, No_Flow_History_H0, start_forecast_season_date, device)
 
         # Get the flow values
@@ -317,3 +328,120 @@ def test_performance_for_basin_and_season(basin, Hydra_Body, General_Hydra_Head,
         Climatology_90 = Climatology[:,2]
 
     return Specific, General, Truth, Climatology_10, Climatology_50, Climatology_90
+
+
+
+def quantile_loss(predictions, true_values, quantiles = np.array([0.1,0.5,0.9])):
+    """
+    Compute the quantile loss for multiple quantiles.
+
+    Parameters:
+    predictions (numpy.ndarray): Array of shape (k, n) where k is the number of quantiles and n is the number of predictions.
+    true_values (numpy.ndarray): Array of shape (n,) containing the true values.
+    quantiles (numpy.ndarray): Array of shape (k,) containing the quantile values.
+
+    Returns:
+    numpy.ndarray: Array of shape (k,) containing the quantile loss for each quantile.
+    """
+    
+    n,k = predictions.shape
+    assert true_values.shape[0] == n
+    assert len(quantiles) == k
+    
+    loss = np.zeros(k)
+
+    for i in range(k):
+        errors = true_values.transpose() - predictions[:,i]
+        loss[i] = np.mean(np.maximum(quantiles[i] * errors, (quantiles[i] - 1) * errors))
+        
+    overall_loss = np.sum(loss)
+    return overall_loss
+
+def Single_Quantile_CV_Scores(basins, years, quantile):
+    Scores = {}
+    n = 0
+    for test_year in years:
+        General_LSTM_Model = torch.load(f'/data/Hydra_Work/3_Day_No_Forecast_Validation_Models/{test_year}/General_LSTM_Model/General_LSTM.pth')
+        General_LSTM_No_Flow_Model = torch.load(f'/data/Hydra_Work/3_Day_No_Forecast_Validation_Models/{test_year}/General_LSTM_No_Flow_Model/General_LSTM.pth')
+        Hydra_General_Head = torch.load(f'/data/Hydra_Work/3_Day_No_Forecast_Validation_Models/{test_year}/General_Head_Model/Hydra_Head_LSTM.pth')
+        Hydra_Body = torch.load(f'/data/Hydra_Work/3_Day_No_Forecast_Validation_Models/{test_year}/General_Head_Model/Hydra_Body_LSTM.pth')
+
+        years_to_include = [year for year in years if year != test_year]
+        climatological_flows = calculate_climatological_flows(years_to_include, daily_flow)
+
+
+        for basin in basins:
+            
+            Specific_Heads = {}
+            Specific_Models = {}
+            Specific_Heads[f'{basin}'] = torch.load(f'/data/Hydra_Work/3_Day_No_Forecast_Validation_Models/{test_year}/Basin_Head_Model/{basin}.path')
+            Specific_Models[f'{basin}'] = torch.load(f'/data/Hydra_Work/3_Day_No_Forecast_Validation_Models/{test_year}/Specific_LSTM_Model/{basin}_specific.pth') 
+                            
+            start_season_date = f'{test_year}-01-01' 
+            end_season_date = f'{test_year}-06-26'
+
+            Climatology_Guesses, Basin_Head_Guesses, General_Head_Guesses,  Truth = test_weekly_performance_hydra(basin, Hydra_Body, Hydra_General_Head, Specific_Heads, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_variables, device, end_season_date, start_season_date,  furthest_distance = 120,  group_lengths = [1], feed_forcing = False)
+            _, General_LSTM_Guesses,  _ = test_weekly_performance(basin, General_LSTM_Model, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_variables, device, end_season_date, start_season_date,  furthest_distance = 120,  group_lengths = [1], feed_forcing = False, specialised = False)
+            _, General_LSTM_No_Flow_Guesses,  _ = test_weekly_performance(basin, General_LSTM_No_Flow_Model, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_variables, device, end_season_date, start_season_date,  furthest_distance = 120,  group_lengths = [1], feed_forcing = False, specialised = False, Flow = False)
+            _, Specific_LSTM_Guesses, _ = test_weekly_performance(basin, Specific_Models, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_variables, device, end_season_date, start_season_date,  furthest_distance = 120,  group_lengths = [1], feed_forcing = False, specialised = True)
+
+            Days = len(Basin_Head_Guesses)
+            Basin_Head_Guesses = np.array(Basin_Head_Guesses).reshape(Days , 3)
+            General_Head_Guesses = np.array(General_Head_Guesses).reshape(Days , 3)
+            General_LSTM_No_Flow_Guesses = np.array(General_LSTM_No_Flow_Guesses).reshape(Days , 3)
+            Climatology_Guesses = np.array(Climatology_Guesses).reshape(Days , 3)
+
+            General_LSTM_Guesses = np.array(General_LSTM_Guesses).reshape(Days , 3)
+            Specific_LSTM_Guesses = np.array(Specific_LSTM_Guesses).reshape(Days , 3)
+            Truth = np.array(Truth)
+
+            model_names = ["Climatology_Model", "Basin_Head_Model", "General_Head_Model", "General_LSTM_Model", "General_LSTM_No_Flow_Model", "Specific_LSTM_Model"] #
+            Outputs = [Climatology_Guesses, Basin_Head_Guesses, General_Head_Guesses, General_LSTM_Guesses, General_LSTM_No_Flow_Guesses, Specific_LSTM_Guesses, ] #
+            
+            
+            for model_name, Output in zip(model_names, Outputs):
+                errors = Truth - Output[:,2]
+                Scores[f'{basin}_{test_year}_{model_name}'] = np.mean(np.maximum(quantile * errors, (quantile - 1) * errors))                
+
+
+        n = n+1
+        print(f"{n} Years done")
+    return Scores 
+
+
+def Matrix_Of_Scores(Hydra_Body, Hydra_General_Head, General_LSTM_Model, Specific_Models, basins, years, quantiles = 3):
+    Scores = {}
+    n = 0
+    for year in years:
+        
+        for basin in basins:
+            years_to_include = new_list = [_ for _ in years if _ != year]
+            climatological_flows = calculate_climatological_flows(years_to_include, daily_flow)
+            
+            start_season_date = f'{year}-01-01' 
+            end_season_date = f'{year}-06-26'
+
+            Climatology_Guesses, Basin_Head_Guesses, General_Head_Guesses,  Truth = test_weekly_performance_hydra(basin, Hydra_Body, Hydra_General_Head, Specific_Heads, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_variables, device, end_season_date, start_season_date,  furthest_distance = 120,  group_lengths = [1], feed_forcing = False)
+            _, General_LSTM_Guesses,  _ = test_weekly_performance(basin, General_LSTM_Model, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_variables, device, end_season_date, start_season_date,  furthest_distance = 120,  group_lengths = [1], feed_forcing = False, specialised = False)
+            _, Specific_LSTM_Guesses, _ = test_weekly_performance(basin, Specific_Models, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_variables, device, end_season_date, start_season_date,  furthest_distance = 120,  group_lengths = [1], feed_forcing = False, specialised = True)
+
+            Days = len(Basin_Head_Guesses)
+            Basin_Head_Guesses = np.array(Basin_Head_Guesses).reshape(Days , 3)
+            General_Head_Guesses = np.array(General_Head_Guesses).reshape(Days , 3)
+            Climatology_Guesses = np.array(Climatology_Guesses).reshape(Days , 3)
+
+            General_LSTM_Guesses = np.array(General_LSTM_Guesses).reshape(Days , 3)
+            Specific_LSTM_Guesses = np.array(Specific_LSTM_Guesses).reshape(Days , 3)
+            Truth = np.array(Truth)
+
+            model_names = ["Climatology_Model", "Basin_Head_Model", "General_Head_Model", "General_LSTM_Model", "Specific_LSTM_Model"]
+            Outputs = [Climatology_Guesses, Basin_Head_Guesses, General_Head_Guesses, General_LSTM_Guesses, Specific_LSTM_Guesses]
+            
+            for model_name, Output in zip(model_names, Outputs):
+                Scores[f'{basin}_{year}_{model_name}'] = quantile_loss(Output, Truth)
+            
+        n = n+1
+        print(f"{n} Years done")
+    return Scores 
+
+

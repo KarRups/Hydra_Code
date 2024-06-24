@@ -27,7 +27,7 @@ import numpy as np
 
 
 # Works, have to choose if the forecast day information is contained in the historical data or the future predictions
-def get_H0(history, forecast_year, forecast_month, forecast_day = 1):
+def get_H0(history, forecast_year, forecast_month, forecast_day):
     forecast_datetime = pd.to_datetime(f"{forecast_year}-{forecast_month}-{forecast_day}")
 
     start_date_h0 = forecast_datetime - pd.DateOffset(days=90)
@@ -85,7 +85,7 @@ def process_forecast_date(flow, history, climate_indices, forecast_datetime, off
     """
 
     History_H0 = get_H0(history, forecast_datetime.year, forecast_datetime.month, forecast_datetime.day)
-
+    
     # For google LSTM change this so start+date is just first available date
     start_date = forecast_datetime - pd.DateOffset(days=offset)
     Past_Flow = flow.loc[start_date:forecast_datetime - pd.DateOffset(days=1)]['daily_flow']

@@ -47,3 +47,20 @@ for name, df in dataframes.items():
     file_path = os.path.join(base_dir, f"{name}.pkl")
     df.to_pickle(file_path)
     print(f"Saved {name} DataFrame to {file_path}")
+
+
+
+import shutil
+import os
+import shutil
+# Define the source and destination paths
+for test_year in range(2000, 2023, 2):
+    source_path = f'/data/Hydra_Work/3_Day_No_Forecast_Validation_Models/{test_year}/General_LSTM_Model/General_LSTM_With_Flags.pth'
+    destination_path = f'/data/Hydra_Work/3_Day_No_Forecast_Validation_Models/{test_year}/Flag_LSTM_Model/Flag_LSTM.pth'
+    os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+    shutil.move(source_path, destination_path)
+    
+    source_loss_path = f'/data/Hydra_Work/3_Day_No_Forecast_Validation_Models/{test_year}/General_LSTM_Model/General_LSTM_With_Flags_loss.txt'
+    destination_loss_path = f'/data/Hydra_Work/3_Day_No_Forecast_Validation_Models/{test_year}/Flag_LSTM_Model/Flag_LSTM_loss.txt'
+    os.makedirs(os.path.dirname(destination_loss_path), exist_ok=True)
+    shutil.move(source_loss_path, destination_loss_path)
