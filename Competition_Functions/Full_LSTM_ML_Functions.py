@@ -252,7 +252,7 @@ def Prepare_Batch(Dates, indices):
     choices = [min_day]* int(proportion_first_value * 100) + [random_day]* int( (1 - proportion_first_value) * 100)
     
     # Changed to 7 to do 7 day ahead prediction
-    final_forcing_distance = 3 #np.random.choice(choices)
+    final_forcing_distance = 1 #np.random.choice(choices) 3
     
     return batch_dates, final_forcing_distance
 
@@ -577,8 +577,8 @@ def No_Body_Model_Run(All_Dates, basins, model_heads, era5, daily_flow, climatol
                     # Changed from H_List_Torch to test if the model behaves well without discharge
                     Basin_Head_Output = model_heads(H_List_torch) #model_heads[f'{basin}'](H_List_torch, Forcing_List_torch)
                 else: # Probably I shouldn't have flow in here? 
-                    Basin_Head_Output = model_heads(No_Flow_List_torch)
-                    #Basin_Head_Output = model_heads(H_List_torch)
+                    #Basin_Head_Output = model_heads(No_Flow_List_torch)
+                    Basin_Head_Output = model_heads(H_List_torch)
                 Basin_Head_Output = Basin_Head_Output[:, -1, :]
                 
 
@@ -672,7 +672,7 @@ def Indicator_LSTM_Run(All_Dates, basins, model_heads, era5, daily_flow, climato
                 # Determine which list to modify based on probability p
                 if random.random() < p:
                     # Add a row of zeros and another row of negative values to No_Flow_List_torch, to show no flow
-                    negative_row = torch.full((No_Flow_List_torch.size(0), No_Flow_List_torch.size(1), 1), -100.0).to(device)  # or another value you choose
+                    negative_row = torch.full((No_Flow_List_torch.size(0), No_Flow_List_torch.size(1), 1), -10.0).to(device)  # or another value you choose
                     
                     New_No_Flow_List_torch = torch.cat([No_Flow_List_torch, negative_row, zero_row], dim=2)
                     # Pass the modified list to the model

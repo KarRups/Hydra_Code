@@ -10,7 +10,7 @@ from Processing_Functions import process_forecast_date, process_seasonal_forecas
 from ML_Functions import Add_Static_To_Series, Process_History, Process_Seasonal_Forecast
 from Full_LSTM_ML_Functions import Prepare_Basin, Get_Relevant_Dates, Process_History, Process_Seasonal_Forecast, Calculate_Flow_Data, Calculate_Head_Outputs
 
-def test_weekly_performance_hydra(basin, Hydra_Body, General_Hydra_Head, model_heads, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_indices, device, end_season_date, start_season_date,  furthest_distance=120, group_lengths = [1], feed_forcing = True):
+def test_weekly_performance_hydra(basin, Hydra_Body, General_Hydra_Head, model_heads, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_indices, device, end_season_date, start_season_date,  furthest_distance=120, group_lengths = [1], feed_forcing = True, days = 3):
     """
     Test the performance of a hydrological model at predicting weekly discharge.
 
@@ -40,7 +40,7 @@ def test_weekly_performance_hydra(basin, Hydra_Body, General_Hydra_Head, model_h
     General_Hydra_Head.eval()
     model_heads[f'{basin}'].eval()
 
-    final_forcing_distance = 3    
+    final_forcing_distance = days
     _, climatological_basin_flow, static_basin_indices, _ = Prepare_Basin([basin], climatological_flows, static_indices, final_forcing_distance)
 
     # Convert date strings to datetime objects
@@ -113,7 +113,7 @@ def test_weekly_performance_hydra(basin, Hydra_Body, General_Hydra_Head, model_h
 
 
 
-def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_indices, device, end_season_date, start_season_date,  furthest_distance=120, group_lengths = [1], feed_forcing = True, specialised = False, Flow = True, p = None):
+def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, climatological_flows, climate_indices, static_indices, device, end_season_date, start_season_date,  furthest_distance=120, group_lengths = [1], feed_forcing = True, specialised = False, days = 3, Flow = True, p = None):
     """
     Test the performance of a hydrological model at predicting weekly discharge.
 
@@ -141,7 +141,7 @@ def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, 
     """
     
 
-    final_forcing_distance = 3    
+    final_forcing_distance = days    
     _, climatological_basin_flow, static_basin_indices, _ = Prepare_Basin([basin], climatological_flows, static_indices, final_forcing_distance)
 
     # Convert date strings to datetime objects
