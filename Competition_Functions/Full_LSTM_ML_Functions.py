@@ -358,7 +358,7 @@ def Calculate_Flow_Data(daily_flow, climatological_basin_flow, basin, start_seas
     Climatology =  torch.tensor(climatological_basin_flow[forecast_datetime.dayofyear + 1 : end_season_date.dayofyear + 1].values, dtype=torch.float32).to(device)
     return Pre_Flow, True_Flow, Season_Flow, Climatology
 
-def Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, Forcing_List_torch, No_Flow_List_torch, H_List_torch, feed_forcing):
+def Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, Forcing_List_torch, No_Flow_List_torch, H_List_torch, feed_forcing, additional_data_torch = None):
     Body_Output = Hydra_Body(No_Flow_List_torch) # , Forcing_List_torch 
     Head_Input = Body_Output
 
@@ -380,6 +380,10 @@ def Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, F
         # Concatenate remaining_rows with Body_Hindcast_Output
         Body_Output_Extra = torch.cat((Body_Output, remaining_columns), dim=2)
 
+        # If additional data is provided, concatenate it with Body_Output_Extra. Need to be care it doesn't have an error if additonal_data is a dataframe
+        if additional_data_torch is not None:
+            Body_Output_Extra = torch.cat((Body_Output_Extra, additional_data_torch), dim=2)
+            
         Basin_Head_Output = model_heads[f'{basin}'](Body_Output_Extra)
         General_Head_Output = General_Hydra_Head(Head_Input)
 
@@ -407,7 +411,7 @@ def Calculate_Losses_and_Predictions(Output, Climatology_list_torch, in_season_l
     return loss, Climatology_loss
 
 
-def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, era5, daily_flow, climatological_flows, climate_indices, seasonal_forecasts, static_indices, optimizer, scheduler, criterion, early_stopper=None, n_epochs=20, batch_size=2, group_lengths=[89, 90, 91, 92], Train_Mode=True, device='cpu', feed_forcing=True, spec_multiplier=1):
+def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, era5, daily_flow, climatological_flows, climate_indices, seasonal_forecasts, static_indices, additional_data, optimizer, scheduler, criterion, early_stopper=None, n_epochs=20, batch_size=2, group_lengths=[89, 90, 91, 92], Train_Mode=True, device='cpu', feed_forcing=True, spec_multiplier=1):
     """
     Runs the model for training or evaluation.
 
@@ -458,17 +462,26 @@ def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, er
             for i in range(0, Size, batch_size):
                 indices = permutation[i:i + batch_size]
                 batch_dates, final_forcing_distance = Prepare_Batch(All_Dates, indices)
+                
+                print('works before prepare basins')
                 basin, climatological_basin_flow, static_basin_indices, basin_usage_counter = Prepare_Basin(basins, climatological_flows, static_indices, final_forcing_distance, basin_usage_counter, basin_count)
 
                 H_List, No_Flow_List, Forcing_List, True_Flow_List, Pre_Flow_List, in_season_list, Season_Flow_List = [[] for _ in range(7)]
                 Climatology_list = []
+                additional_data_torch_list = []
+                additional_list_torch = None
+                
+                
 
                 for forecast_datetime in batch_dates:
                     start_season_date, start_forecast_season_date, end_season_date = Get_Relevant_Dates(forecast_datetime, final_forcing_distance, group_lengths)
 
                     era5_basin = era5[f'{basin}_{forecast_datetime.year}']
+                    print('works before process history')
+
                     History_H0, No_Flow_History_H0, Flat_H0_tensor, Flat_No_Flow_H0_tensor = Process_History(daily_flow[basin], era5_basin, static_basin_indices, climate_indices, forecast_datetime, device)
                     Seasonal_Forecasts_tensor, in_season_mask = Process_Seasonal_Forecast(seasonal_forecasts, basin, forecast_datetime, end_season_date, static_basin_indices, climatological_basin_flow, No_Flow_History_H0, start_forecast_season_date, device)
+                    print('works before calculate flow data')
                     Pre_Flow, True_Flow, Season_Flow, Climatology = Calculate_Flow_Data(daily_flow, climatological_basin_flow, basin, start_season_date, forecast_datetime, end_season_date, in_season_mask, device)
 
                     History_H0_Tensor = torch.tensor(History_H0.values.astype(np.float32)).to(device)
@@ -479,13 +492,28 @@ def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, er
                     in_season_list.append(in_season_mask)
                     Climatology_list = Climatology_list + [Climatology]
 
+                    additional_data_torch = None
+                    if additional_data is not None:
+                        additional_data = additional_data[(additional_data.index > forecast_datetime) & (additional_data.index <= end_season_date)]
+                        print('works until making torch tensor')
+                        additional_data_torch = torch.tensor(additional_data.values.astype(np.float32)).to(device)
+                                                
+                        additional_data_torch_list = additional_data_torch_list + [additional_data_torch]
+
+
+
                 H_List_torch, No_Flow_List_torch, Forcing_List_torch, True_Flow_List_torch, Pre_Flow_List_torch, in_season_list_torch, Season_Flow_List_torch = [
                     torch.stack(lst, dim=0) for lst in [H_List, No_Flow_List, Forcing_List, True_Flow_List, Pre_Flow_List, in_season_list, Season_Flow_List]]
 
+                if additional_data is not None:
+                    additional_list_torch = torch.stack(additional_data_torch_list, dim=0)
                 Climatology_list_torch = torch.stack(Climatology_list, dim=0)
 
+
                 optimizer.zero_grad()
-                Basin_Head_Output, General_Head_Output = Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, Forcing_List_torch, No_Flow_List_torch, H_List_torch, feed_forcing)
+                
+                print('works until Calculate Head Outputs')
+                Basin_Head_Output, General_Head_Output = Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, Forcing_List_torch, No_Flow_List_torch, H_List_torch, feed_forcing, additional_list_torch)
                 Basin_Head_Output = Basin_Head_Output[:, -1, :]
                 General_Head_Output = General_Head_Output[:, -1, :]
 
@@ -493,7 +521,7 @@ def Model_Run(All_Dates, basins, Hydra_Body, General_Hydra_Head, model_heads, er
                 loss_specific, _ = Calculate_Losses_and_Predictions(Basin_Head_Output, Climatology_list_torch, in_season_list_torch, Season_Flow_List_torch, Season_Flow, criterion, batch_size)
 
                 if Train_Mode:
-                    loss = loss_general + spec_multiplier * loss_specific
+                    loss = loss_general #+ spec_multiplier * loss_specific
                     percentage_loss = loss / Climatology_loss
                     loss.backward()
                     optimizer.step()
@@ -587,7 +615,7 @@ def No_Body_Model_Run(All_Dates, basins, model_heads, era5, daily_flow, climatol
                 # Attempt to standardise by difficulty?
                 percentage_loss = loss/Climatology_loss
                 if Train_Mode:
-                    loss.backward()
+                    percentage_loss.backward()
                     optimizer.step() 
                     scheduler.step()
 
@@ -693,7 +721,7 @@ def Indicator_LSTM_Run(All_Dates, basins, model_heads, era5, daily_flow, climato
                 # Attempt to standardise by difficulty?
                 percentage_loss = loss/Climatology_loss
                 if Train_Mode:
-                    loss.backward()
+                    percentage_loss.backward()
                     optimizer.step() 
                     scheduler.step()
 

@@ -354,8 +354,42 @@ def quantile_loss(predictions, true_values, quantiles = np.array([0.1,0.5,0.9]))
         errors = true_values.transpose() - predictions[:,i]
         loss[i] = np.mean(np.maximum(quantiles[i] * errors, (quantiles[i] - 1) * errors))
         
-    overall_loss = np.sum(loss)
+    overall_loss = np.mean(loss)
     return overall_loss
+
+# define a normalised quantile loss function that takes in the predictions, true values and quantiles as well as climatology, and uses the error from using climatology as predicitons to get an efficiency score
+def normalised_quantile_loss(predictions, true_values, quantiles = np.array([0.1,0.5,0.9]), climatology = None):
+    """
+    Compute the normalised quantile loss for multiple quantiles.
+
+    Parameters:
+    predictions (numpy.ndarray): Array of shape (k, n) where k is the number of quantiles and n is the number of predictions.
+    true_values (numpy.ndarray): Array of shape (n,) containing the true values.
+    quantiles (numpy.ndarray): Array of shape (k,) containing the quantile values.
+    climatology (numpy.ndarray): Array of shape (n,) containing the climatology values.
+
+    Returns:
+    numpy.ndarray: Array of shape (k,) containing the normalised quantile loss for each quantile.
+    """
+    
+    n,k = predictions.shape
+    assert true_values.shape[0] == n
+    assert len(quantiles) == k
+    
+    loss = np.zeros(k)
+    climatology_loss = np.zeros(k)
+
+    for i in range(k):
+        errors = true_values.transpose() - predictions[:,i]
+        loss[i] = np.mean(np.maximum(quantiles[i] * errors, (quantiles[i] - 1) * errors))
+        
+        climatology_errors = true_values.transpose() - climatology[:,i]
+        climatology_loss[i] = np.mean(np.maximum(quantiles[i] * climatology_errors, (quantiles[i] - 1) * climatology_errors))
+        
+    overall_loss = np.mean(loss)
+    overall_climatology_loss = np.mean(climatology_loss)
+    normalised_loss = overall_loss / overall_climatology_loss
+    return 1 - normalised_loss 
 
 def Single_Quantile_CV_Scores(basins, years, quantile):
     Scores = {}

@@ -1,1 +1,1 @@
-{'hidden_size': 128, 'num_layers': 1, 'dropout': 0, 'bidirectional': False, 'learning_rate': 0.01, 'basin': 'animas_r_at_durango', 'test_year': 2022}
+{'hidden_size': 64, 'num_layers': 1, 'dropout': 0, 'bidirectional': False, 'learning_rate': 0.005, 'basin': 'green_r_bl_howard_a_hanson_dam', 'test_year': 2020, 'Use_Upstream': False}

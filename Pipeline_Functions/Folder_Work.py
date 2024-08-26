@@ -206,3 +206,43 @@ def scale_dataframes(df_dict, csv_path):
 
 # era5_normalise_path = '/data/gbmc/Rodeo_Submission/Rodeo_Data/era5/normalising_values.csv'
 # scale_dataframes(era5, era5_normalise_path)
+
+
+def create_dataframe_from_txt(file_path, df_name):
+    """
+    Reads a text file and creates a DataFrame with the given name.
+
+    Parameters:
+    file_path (str): The path to the text file.
+    df_name (str): The name of the DataFrame.
+
+    Returns:
+    pd.DataFrame: The created DataFrame.
+    """
+    # Read the file and process it
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+
+    # Find the start of the actual data (where the data header starts)
+    start_index = 0
+    for i, line in enumerate(lines):
+        if line.startswith("agency_cd"):
+            start_index = i
+            break
+
+    # Extract the header and the actual data lines
+    header_line = lines[start_index]
+    data_lines = lines[start_index + 2:]  # Skip the units line as well
+
+    # Create the DataFrame
+    header = header_line.strip().split('\t')
+    data = [line.strip().split('\t') for line in data_lines if line.strip()]
+
+    # Create DataFrame
+    df = pd.DataFrame(data, columns=header)
+    df.set_index('datetime', inplace=True)
+    df.index = pd.to_datetime(df.index)
+
+    # Assign the DataFrame to the specified name in the globals() dictionary
+    return df
+
