@@ -65,7 +65,7 @@ def test_weekly_performance_hydra(basin, Hydra_Body, General_Hydra_Head, model_h
 
         start_season_date, start_forecast_season_date, end_season_date = Get_Relevant_Dates(forecast_datetime, final_forcing_distance, group_lengths)
         
-        era5_basin = era5[f'{basin}_{forecast_datetime.year}']
+        era5_basin = era5[f'{basin}'] #/{test_year}
         History_H0, No_Flow_History_H0, Flat_H0_tensor, Flat_No_Flow_H0_tensor = Process_History(daily_flow[basin], era5_basin, static_basin_indices, climate_indices, forecast_datetime, device)
     
         Seasonal_Forecasts_tensor, in_season_mask = Process_Seasonal_Forecast(seasonal_forecasts, basin, forecast_datetime, end_season_date, static_basin_indices, climatological_basin_flow, No_Flow_History_H0, start_forecast_season_date, device)
@@ -75,17 +75,17 @@ def test_weekly_performance_hydra(basin, Hydra_Body, General_Hydra_Head, model_h
         No_Flow_History_H0_Tensor = torch.tensor(No_Flow_History_H0.values.astype(np.float32)).to(device)
 
 
-        H_List, No_Flow_List, Forcing_List, True_Flow_List, Pre_Flow_List, Season_Flow_List = [ H_List + [History_H0_Tensor], No_Flow_List + [No_Flow_History_H0_Tensor], Forcing_List + [Seasonal_Forecasts_tensor],
+        H_List, No_Flow_List, True_Flow_List, Pre_Flow_List, Season_Flow_List = [ H_List + [History_H0_Tensor], No_Flow_List + [No_Flow_History_H0_Tensor],
             True_Flow_List + [True_Flow], Pre_Flow_List + [Pre_Flow], Season_Flow_List + [Season_Flow] ]
         in_season_list.append(in_season_mask)
         Climatology_list = Climatology_list + [Climatology]
 
-        H_List_torch, No_Flow_List_torch, Forcing_List_torch, True_Flow_List_torch, Pre_Flow_List_torch, in_season_list_torch, Season_Flow_List_torch = [
-            torch.stack(lst, dim=0) for lst in [H_List, No_Flow_List, Forcing_List, True_Flow_List, Pre_Flow_List, in_season_list, Season_Flow_List] ]
+        H_List_torch, No_Flow_List_torch, True_Flow_List_torch, Pre_Flow_List_torch, in_season_list_torch, Season_Flow_List_torch = [
+            torch.stack(lst, dim=0) for lst in [H_List, No_Flow_List, True_Flow_List, Pre_Flow_List, in_season_list, Season_Flow_List] ]
         
         Climatology_list_torch = torch.stack(Climatology_list, dim = 0)
 
-        Basin_Head_Output, General_Head_Output = Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, Forcing_List_torch, No_Flow_List_torch, H_List_torch, feed_forcing)
+        Basin_Head_Output, General_Head_Output = Calculate_Head_Outputs(Hydra_Body, General_Hydra_Head, model_heads, basin, No_Flow_List_torch, H_List_torch, feed_forcing)
            
         Basin_Head_Guess = Basin_Head_Output[:,-1,:]   
                                    
@@ -166,7 +166,7 @@ def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, 
 
         start_season_date, start_forecast_season_date, end_season_date = Get_Relevant_Dates(forecast_datetime, final_forcing_distance, group_lengths)
         
-        era5_basin = era5[f'{basin}_{forecast_datetime.year}']
+        era5_basin = era5[f'{basin}'] #_{forecast_datetime.year}
         History_H0, No_Flow_History_H0, Flat_H0_tensor, Flat_No_Flow_H0_tensor = Process_History(daily_flow[basin], era5_basin, static_basin_indices, climate_indices, forecast_datetime, device)
     
         Seasonal_Forecasts_tensor, in_season_mask = Process_Seasonal_Forecast(seasonal_forecasts, basin, forecast_datetime, end_season_date, static_basin_indices, climatological_basin_flow, No_Flow_History_H0, start_forecast_season_date, device)
@@ -176,13 +176,13 @@ def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, 
         No_Flow_History_H0_Tensor = torch.tensor(No_Flow_History_H0.values.astype(np.float32)).to(device)
 
 
-        H_List, No_Flow_List, Forcing_List, True_Flow_List, Pre_Flow_List, Season_Flow_List = [ H_List + [History_H0_Tensor], No_Flow_List + [No_Flow_History_H0_Tensor], Forcing_List + [Seasonal_Forecasts_tensor],
+        H_List, No_Flow_List, True_Flow_List, Pre_Flow_List, Season_Flow_List = [ H_List + [History_H0_Tensor], No_Flow_List + [No_Flow_History_H0_Tensor],
             True_Flow_List + [True_Flow], Pre_Flow_List + [Pre_Flow], Season_Flow_List + [Season_Flow] ]
         in_season_list.append(in_season_mask)
         Climatology_list = Climatology_list + [Climatology]
 
-        H_List_torch, No_Flow_List_torch, Forcing_List_torch, True_Flow_List_torch, Pre_Flow_List_torch, in_season_list_torch, Season_Flow_List_torch = [
-            torch.stack(lst, dim=0) for lst in [H_List, No_Flow_List, Forcing_List, True_Flow_List, Pre_Flow_List, in_season_list, Season_Flow_List] ]
+        H_List_torch, No_Flow_List_torch, True_Flow_List_torch, Pre_Flow_List_torch, in_season_list_torch, Season_Flow_List_torch = [
+            torch.stack(lst, dim=0) for lst in [H_List, No_Flow_List, True_Flow_List, Pre_Flow_List, in_season_list, Season_Flow_List] ]
         
         Climatology_list_torch = torch.stack(Climatology_list, dim = 0)
         
@@ -194,7 +194,7 @@ def test_weekly_performance(basin, model, era5, seasonal_forecasts, daily_flow, 
             if p is not None:
                 zero_row = torch.zeros(No_Flow_List_torch.size(0), No_Flow_List_torch.size(1), 1).to(device)
                 if p == 0:
-                    negative_row = torch.full((No_Flow_List_torch.size(0), No_Flow_List_torch.size(1), 1), -100.0).to(device)
+                    negative_row = torch.full((No_Flow_List_torch.size(0), No_Flow_List_torch.size(1), 1), -10.0).to(device)
                     New_No_Flow_List_torch = torch.cat([No_Flow_List_torch, negative_row, zero_row], dim=2)
                     Basin_Head_Output = model(New_No_Flow_List_torch)
                 else:
