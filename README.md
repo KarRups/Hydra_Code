@@ -1,4 +1,4 @@
-# Hydra Model: Optimizing Loss Functions for Hydrological Forecasting
+# Hydra-LSTM: Optimizing Loss Functions for Hydrological Forecasting
 
 Code accompanying the paper "Hydra-LSTM: A semi-shared Machine Learning architecture for prediction across Watersheds" published in *Artificial Intelligence for the Earth Systems* (AIES-D-24-0103.1).
 
